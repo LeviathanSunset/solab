@@ -7,11 +7,19 @@ import requests
 import json
 import time
 import yaml
-from typing import Optional, Dict, Any, List
+import random
+import threading
+import urllib3
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import asdict
 from datetime import datetime
 import sys
 import os
+import uuid
+
+# 禁用SSL警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -21,39 +29,31 @@ from functions.models import Address, TokenBalance
 
 
 class OKXAddressBalanceCrawler:
-    """OKX地址资产爬虫"""
+    """OKX地址资产爬虫 - 支持多线程高速爬取"""
     
     def __init__(self):
         self.base_url = "https://web3.okx.com/priapi/v2/wallet/asset/profile/all/explorer"
-        self.session = requests.Session()
-        self._setup_headers()
-    
-    def _setup_headers(self):
-        """设置请求头"""
-        self.session.headers.update({
-            "accept": "application/json",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "en-US,en;q=0.9,zh-HK;q=0.8,zh-CN;q=0.7,zh;q=0.6,es-MX;q=0.5,es;q=0.4,ru-RU;q=0.3,ru;q=0.2",
-            "app-type": "web",
-            "content-type": "application/json",
-            "device-token": "01980a38-038a-44d9-8da3-a8276bbcb5b9",
-            "devid": "01980a38-038a-44d9-8da3-a8276bbcb5b9",
-            "origin": "https://web3.okx.com",
-            "platform": "web",
-            "priority": "u=1, i",
-            "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-            "x-cdn": "https://web3.okx.com",
-            "x-locale": "en_US",
-            "x-simulated-trading": "undefined",
-            "x-utc": "0",
-            "x-zkdex-env": "0",
-        })
+        
+        # 为每个线程创建独立的session池
+        self.session_pool = []
+        self.session_lock = threading.Lock()
+        
+        # 随机化配置
+        self.user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15"
+        ]
+        
+        self.device_ids = [
+            "01980a38-038a-44d9-8da3-a8276bbcb5b9",
+            "02471b49-149b-55ea-9ed4-b9387ccdc6ca", 
+            "03562c5a-25ac-66fb-af25-ca498ddde7db",
+            "04653d6b-36bd-77gc-bg36-db5a9eef8ec",
+            "05744e7c-47ce-88hd-ch47-ec6baffa9fd"
+        ]
         
         # 存储认证信息
         self.auth_cookie = None
@@ -63,6 +63,54 @@ class OKXAddressBalanceCrawler:
         self.auth_dev_id = None
         self.auth_site_info = None
     
+    def _get_or_create_session(self) -> requests.Session:
+        """获取或创建session实例"""
+        with self.session_lock:
+            if self.session_pool:
+                return self.session_pool.pop()
+            else:
+                return self._create_new_session()
+    
+    def _return_session(self, session: requests.Session):
+        """归还session到池中"""
+        with self.session_lock:
+            self.session_pool.append(session)
+    
+    def _create_new_session(self) -> requests.Session:
+        """创建新的session实例"""
+        session = requests.Session()
+        
+        # 随机选择User-Agent和设备ID
+        user_agent = random.choice(self.user_agents)
+        device_id = random.choice(self.device_ids)
+        
+        session.headers.update({
+            "accept": "application/json",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "en-US,en;q=0.9,zh-HK;q=0.8,zh-CN;q=0.7,zh;q=0.6,es-MX;q=0.5,es;q=0.4,ru-RU;q=0.3,ru;q=0.2",
+            "app-type": "web",
+            "content-type": "application/json",
+            "device-token": device_id,
+            "devid": device_id,
+            "origin": "https://web3.okx.com",
+            "platform": "web",
+            "priority": "u=1, i",
+            "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "user-agent": user_agent,
+            "x-cdn": "https://web3.okx.com",
+            "x-locale": "en_US",
+            "x-simulated-trading": "undefined",
+            "x-utc": "0",
+            "x-zkdex-env": "0",
+        })
+        
+        return session
+
     def set_auth(self, cookie: str, fp_token: str, verify_sign: str, 
                  verify_token: str, dev_id: str, site_info: str):
         """设置认证信息"""
@@ -72,14 +120,18 @@ class OKXAddressBalanceCrawler:
         self.auth_verify_token = verify_token
         self.auth_dev_id = dev_id
         self.auth_site_info = site_info
-        
-        # 更新设备ID
-        self.session.headers["devid"] = dev_id
-        self.session.headers["device-token"] = dev_id
     
-    def _update_dynamic_headers(self, wallet_address: str):
+    def _update_dynamic_headers(self, session: requests.Session, wallet_address: str):
         """更新动态请求头"""
         current_timestamp = int(time.time() * 1000)
+        
+        # 添加随机延迟模拟真实用户行为
+        jitter = random.randint(-100, 100)
+        timestamp_with_jitter = current_timestamp + jitter
+        
+        # 随机生成一些动态参数
+        request_id = str(uuid.uuid4())
+        group_id = f"{timestamp_with_jitter}-c-{random.randint(10, 20)}"
         
         # 使用存储的认证信息或默认值
         cookie_string = self.auth_cookie if self.auth_cookie else (
@@ -110,8 +162,9 @@ class OKXAddressBalanceCrawler:
         
         headers_update = {
             "referer": f"https://web3.okx.com/portfolio/{wallet_address}/analysis",
-            "x-request-timestamp": str(current_timestamp),
-            "x-id-group": f"{current_timestamp}-c-15",
+            "x-request-timestamp": str(timestamp_with_jitter),
+            "x-id-group": group_id,
+            "x-request-id": request_id,
             "cookie": cookie_string,
             "b-locale": "en_US",
             "x-site-info": site_info,
@@ -126,8 +179,164 @@ class OKXAddressBalanceCrawler:
         if self.auth_verify_token:
             headers_update["ok-verify-token"] = self.auth_verify_token
             
-        self.session.headers.update(headers_update)
+        session.headers.update(headers_update)
     
+    def fetch_multiple_addresses_fast(self, wallet_addresses: List[str], 
+                                     chain_id: int = 501, 
+                                     max_workers: int = 3,  # 降低并发数提高成功率
+                                     timeout_per_request: float = 3.0,
+                                     debug: bool = False) -> Dict[str, Optional[Address]]:
+        """
+        高速批量获取多个地址的资产信息 - 优化成功率版本
+        
+        Args:
+            wallet_addresses: 钱包地址列表
+            chain_id: 链ID，默认501(Solana)
+            max_workers: 最大并发线程数，默认3（为了提高成功率）
+            timeout_per_request: 每个请求的超时时间(秒)
+            debug: 是否开启调试模式
+            
+        Returns:
+            地址映射到Address对象的字典
+        """
+        if not wallet_addresses:
+            return {}
+        
+        print(f"🚀 开始高成功率批量爬取 {len(wallet_addresses)} 个地址资产...")
+        print(f"⚡ 使用 {max_workers} 个线程并发处理（优化成功率）")
+        
+        results = {}
+        start_time = time.time()
+        
+        # 使用智能延迟策略提高成功率
+        def fetch_with_smart_delay(address: str, index: int) -> Tuple[str, Optional[Address]]:
+            # 基于索引的智能延迟，避免所有请求同时发起
+            base_delay = (index % max_workers) * 0.3
+            jitter = random.uniform(0.1, 0.5)
+            delay = base_delay + jitter
+            time.sleep(delay)
+            
+            try:
+                result = self.fetch_address_assets(address, chain_id=chain_id, debug=debug)
+                return address, result
+            except Exception as e:
+                if debug:
+                    print(f"❌ 处理地址 {address} 时出错: {e}")
+                return address, None
+        
+        # 使用线程池执行
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务，带索引用于智能延迟
+            future_to_address = {
+                executor.submit(fetch_with_smart_delay, addr, i): addr 
+                for i, addr in enumerate(wallet_addresses)
+            }
+            
+            # 收集结果
+            completed = 0
+            failed_count = 0
+            
+            for future in as_completed(future_to_address, timeout=len(wallet_addresses) * timeout_per_request):
+                address = future_to_address[future]
+                completed += 1
+                
+                try:
+                    addr, result = future.result()
+                    results[addr] = result
+                    
+                    if result:
+                        status = "✅"
+                    else:
+                        status = "❌"
+                        failed_count += 1
+                        
+                    # 显示进度，包含成功率
+                    success_rate = ((completed - failed_count) / completed) * 100
+                    print(f"  {status} {completed}/{len(wallet_addresses)}: {addr[:8]}... (成功率: {success_rate:.1f}%)")
+                    
+                except Exception as e:
+                    results[address] = None
+                    failed_count += 1
+                    success_rate = ((completed - failed_count) / completed) * 100
+                    print(f"  ❌ {completed}/{len(wallet_addresses)}: {address[:8]}... - 错误: {e} (成功率: {success_rate:.1f}%)")
+        
+        elapsed_time = time.time() - start_time
+        success_count = sum(1 for r in results.values() if r is not None)
+        final_success_rate = (success_count / len(wallet_addresses)) * 100
+        
+        print(f"✅ 批量爬取完成!")
+        print(f"⏱️  总耗时: {elapsed_time:.2f} 秒")
+        print(f"📊 最终成功率: {success_count}/{len(wallet_addresses)} ({final_success_rate:.1f}%)")
+        print(f"🚀 平均速度: {len(wallet_addresses)/elapsed_time:.1f} 地址/秒")
+        
+        if final_success_rate >= 90:
+            print(f"🎉 成功率达到 {final_success_rate:.1f}% - 优秀!")
+        elif final_success_rate >= 70:
+            print(f"👍 成功率达到 {final_success_rate:.1f}% - 良好!")
+        else:
+            print(f"⚠️  成功率 {final_success_rate:.1f}% - 需要进一步优化")
+        
+        return results
+    
+    def _make_request_with_retry(self, session: requests.Session, url: str, 
+                                params: dict, payload: dict, 
+                                max_retries: int = 3, debug: bool = False) -> Optional[dict]:
+        """带重试机制的网络请求"""
+        for attempt in range(max_retries):
+            try:
+                # 每次重试前随机延迟
+                if attempt > 0:
+                    delay = random.uniform(0.5, 1.5)
+                    time.sleep(delay)
+                    if debug:
+                        print(f"    第{attempt + 1}次重试...")
+                
+                response = session.post(
+                    url,
+                    params=params,
+                    json=payload,
+                    timeout=(2, 5),  # 连接超时2秒，读取超时5秒
+                    verify=False  # 禁用SSL验证
+                )
+                
+                if response.status_code == 200:
+                    try:
+                        return response.json()
+                    except json.JSONDecodeError:
+                        if debug:
+                            print(f"    JSON解析失败，尝试{attempt + 1}/{max_retries}")
+                        continue
+                        
+                elif response.status_code == 429:
+                    # 遇到限流，延长等待时间
+                    wait_time = 2 ** attempt + random.uniform(1, 3)
+                    if debug:
+                        print(f"    遇到限流(429)，等待{wait_time:.1f}秒...")
+                    time.sleep(wait_time)
+                    continue
+                    
+                else:
+                    if debug:
+                        print(f"    HTTP错误: {response.status_code}")
+                    continue
+                    
+            except requests.exceptions.Timeout:
+                if debug:
+                    print(f"    请求超时，尝试{attempt + 1}/{max_retries}")
+                continue
+                
+            except requests.exceptions.ConnectionError:
+                if debug:
+                    print(f"    连接错误，尝试{attempt + 1}/{max_retries}")
+                continue
+                
+            except Exception as e:
+                if debug:
+                    print(f"    未知错误: {e}")
+                continue
+        
+        return None
+
     def fetch_address_assets(self, wallet_address: str, chain_id: int = 501, limit: int = 20, debug: bool = False) -> Optional[Address]:
         """
         获取地址资产信息
@@ -141,24 +350,26 @@ class OKXAddressBalanceCrawler:
         Returns:
             Address对象或None
         """
+        session = self._get_or_create_session()
+        
         try:
             # 更新动态请求头
-            self._update_dynamic_headers(wallet_address)
+            self._update_dynamic_headers(session, wallet_address)
             
             # 构建请求参数
             current_timestamp = int(time.time() * 1000)
             params = {
-                "t": current_timestamp
+                "t": current_timestamp + random.randint(-50, 50)  # 添加随机扰动
             }
             
-            # 使用正确的payload格式
+            # 使用正确的payload格式，添加随机化
             payload = {
-                "userUniqueId": "485662AA-1409-4BC7-8F10-A6406C1F3532",
-                "hideValueless": False,
+                "userUniqueId": str(uuid.uuid4()),  # 随机化用户ID
+                "hideValueless": random.choice([True, False]),  # 随机化参数
                 "address": wallet_address,
-                "forceRefresh": True,
+                "forceRefresh": random.choice([True, False]),  # 随机化刷新
                 "page": 1,
-                "limit": 20,  # 增加限制以获取更多代币
+                "limit": limit,
                 "chainIndexes": [chain_id]
             }
             
@@ -166,117 +377,69 @@ class OKXAddressBalanceCrawler:
                 print(f"请求URL: {self.base_url}")
                 print(f"请求参数: {params}")
                 print(f"请求体: {json.dumps(payload, indent=2)}")
-                print(f"请求头数量: {len(self.session.headers)}")
             
-            # 增强的网络请求处理
-            try:
-                response = self.session.post(
-                    self.base_url,
-                    params=params,
-                    json=payload,
-                    timeout=(3, 8),  # 连接超时3秒，读取超时8秒
-                    verify=True  # 启用SSL验证
-                )
-            except requests.exceptions.SSLError as ssl_error:
-                if debug:
-                    print(f"SSL验证错误: {ssl_error}")
-                    print("尝试禁用SSL验证...")
-                
-                try:
-                    # 禁用SSL警告
-                    import urllib3
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                    
-                    response = self.session.post(
-                        self.base_url,
-                        params=params,
-                        json=payload,
-                        timeout=(3, 8),
-                        verify=False  # 禁用SSL验证
-                    )
-                    if debug:
-                        print("SSL验证禁用后请求成功")
-                except Exception as fallback_error:
-                    print(f"请求失败: {fallback_error}")
-                    return None
-                    
-            except requests.exceptions.ConnectionError as conn_error:
-                print(f"网络连接错误: {conn_error}")
-                return None
-                
-            except requests.exceptions.Timeout as timeout_error:
-                print(f"请求超时: {timeout_error}")
-                return None
+            # 使用重试机制发送请求
+            data = self._make_request_with_retry(
+                session, 
+                self.base_url, 
+                params, 
+                payload, 
+                max_retries=5,  # 增加重试次数
+                debug=debug
+            )
             
-            if debug:
-                print(f"响应状态码: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if debug:
-                    print(f"成功获取响应，状态码: {response.status_code}")
-                    print("=== API响应数据结构 ===")
-                    print(f"响应数据: {json.dumps(data, indent=2, ensure_ascii=False)}")
-                
+            if data:
                 # 解析响应数据
-                return self._parse_assets_data(data, wallet_address, chain_id, debug)
+                result = self._parse_assets_data(data, wallet_address, chain_id, debug)
+                return result
             else:
-                print(f"请求失败，状态码: {response.status_code}")
                 if debug:
-                    print(f"响应内容: {response.text}")
+                    print(f"请求失败，无法获取数据")
                 return None
                 
-        except requests.exceptions.SSLError as ssl_e:
-            print(f"SSL连接错误: {ssl_e}")
-            print("可能的解决方案:")
-            print("1. 检查系统时间是否正确")
-            print("2. 更新证书或尝试使用代理")
-            print("3. 检查防火墙设置")
-            return None
-        except requests.exceptions.ConnectionError as conn_e:
-            print(f"网络连接错误: {conn_e}")
-            print("可能的解决方案:")
-            print("1. 检查网络连接")
-            print("2. 检查代理设置")
-            print("3. 尝试更换网络环境")
-            return None
-        except requests.exceptions.Timeout as timeout_e:
-            print(f"请求超时: {timeout_e}")
-            print("请稍后重试")
-            return None
-        except requests.exceptions.RequestException as e:
-            print(f"网络请求错误: {e}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"JSON解析错误: {e}")
-            return None
         except Exception as e:
-            print(f"未知错误: {e}")
+            if debug:
+                print(f"处理地址 {wallet_address} 时出错: {e}")
             return None
+        finally:
+            # 归还session到池中
+            self._return_session(session)
     
     def _parse_assets_data(self, data: Dict[str, Any], wallet_address: str, chain_id: int, debug: bool = False) -> Optional[Address]:
-        """解析资产数据"""
+        """解析资产数据 - 增强容错性"""
         try:
             # 检查响应结构
+            if not isinstance(data, dict):
+                if debug:
+                    print("响应数据不是字典格式")
+                return None
+                
             if data.get("code") != 0:
-                print(f"API返回错误: {data.get('msg', '未知错误')}")
+                if debug:
+                    print(f"API返回错误: {data.get('msg', '未知错误')}")
                 return None
             
             result = data.get("data", {})
+            if not isinstance(result, dict):
+                if debug:
+                    print("数据字段不是字典格式")
+                return None
             
-            # 获取总资产信息
+            # 获取总资产信息 - 安全处理
             tokens_info = result.get("tokens", {})
+            if not isinstance(tokens_info, dict):
+                tokens_info = {}
+            
             token_count = tokens_info.get("total", 0)
             
             # 从walletAssetSummary获取汇总信息（如果存在）
             wallet_summary = result.get("walletAssetSummary", {})
-            if wallet_summary is None:
+            if wallet_summary is None or not isinstance(wallet_summary, dict):
                 wallet_summary = {}
             
-            total_amount = wallet_summary.get("tokenTotalCurrencyAmount", "0")
-            defi_amount = wallet_summary.get("defiTotalCurrencyAmount", "0")
-            nft_amount = wallet_summary.get("nftTotalCurrencyAmount", "0")
+            total_amount = str(wallet_summary.get("tokenTotalCurrencyAmount", "0"))
+            defi_amount = str(wallet_summary.get("defiTotalCurrencyAmount", "0"))
+            nft_amount = str(wallet_summary.get("nftTotalCurrencyAmount", "0"))
             
             # 创建地址对象
             address = Address(
@@ -285,25 +448,35 @@ class OKXAddressBalanceCrawler:
                 tag="爬取资产"
             )
             
-            # 解析代币资产列表 - 使用正确的路径
-            tokens_info = result.get("tokens", {})
+            # 解析代币资产列表 - 使用正确的路径并增强容错性
             assets_list = tokens_info.get("tokenlist", [])
+            if assets_list is None:
+                assets_list = []
             
             if debug:
                 print(f"找到 {len(assets_list)} 种代币")
             
             for i, asset_data in enumerate(assets_list):
+                if not isinstance(asset_data, dict):
+                    continue
+                    
                 try:
                     # 提取基本信息
                     token_symbol = asset_data.get("symbol", "")
-                    coin_amount = asset_data.get("coinAmount", "0")
-                    currency_amount = asset_data.get("currencyAmount", "0")
+                    coin_amount = str(asset_data.get("coinAmount", "0"))
+                    currency_amount = str(asset_data.get("currencyAmount", "0"))
                     
                     # 从coinBalanceDetails获取详细信息
                     coin_details = asset_data.get("coinBalanceDetails", [])
-                    if coin_details:
+                    if coin_details is None:
+                        coin_details = []
+                    
+                    if coin_details and isinstance(coin_details, list) and len(coin_details) > 0:
                         detail = coin_details[0]  # 取第一个详情
-                        token_address = detail.get("address", "")
+                        if isinstance(detail, dict):
+                            token_address = detail.get("address", "")
+                        else:
+                            token_address = ""
                     else:
                         token_address = ""
                     
@@ -313,13 +486,13 @@ class OKXAddressBalanceCrawler:
                     
                     if is_native:
                         # SOL作为原生代币，使用特殊标识
-                        address.add_balance("SOL", str(coin_amount), str(currency_amount))
+                        address.add_balance("SOL", coin_amount, currency_amount)
                         if debug:
                             print(f"发现原生代币 SOL: {coin_amount} (${currency_amount})")
                     else:
                         # 添加代币余额
                         if token_address:  # 只有有地址的代币才添加
-                            address.add_balance(token_address, str(coin_amount), str(currency_amount))
+                            address.add_balance(token_address, coin_amount, currency_amount)
                             
                             if debug and i < 5:  # 只显示前5个代币的详情
                                 print(f"代币 {i+1}: {token_symbol} - {coin_amount} (${currency_amount})")
@@ -329,21 +502,29 @@ class OKXAddressBalanceCrawler:
                         print(f"解析第{i+1}个代币时出错: {e}")
                     continue
             
-            # 检查是否有DeFi资产
-            defis = result.get("defis", [])
-            defi_total = sum(float(defi.get("balance", "0")) for defi in defis)
+            # 检查是否有DeFi资产 - 安全处理空值
+            defis = result.get("defis")
+            if defis is None:
+                defis = []
+            defi_total = sum(float(defi.get("balance", "0")) for defi in defis if defi and isinstance(defi, dict))
             
-            # 检查是否有NFT资产
-            nfts = result.get("nfts", [])
+            # 检查是否有NFT资产 - 安全处理空值
+            nfts = result.get("nfts")
+            if nfts is None:
+                nfts = []
             nft_total = 0
             for nft in nfts:
-                nft_total += float(nft.get("valuation", "0"))
+                if nft and isinstance(nft, dict):
+                    try:
+                        nft_total += float(nft.get("valuation", "0"))
+                    except (ValueError, TypeError):
+                        continue
             
             # 更新note以包含更多信息
             wallet_summary_safe = result.get("walletAssetSummary")
-            if wallet_summary_safe is None:
+            if wallet_summary_safe is None or not isinstance(wallet_summary_safe, dict):
                 wallet_summary_safe = {}
-            total_value = wallet_summary_safe.get("tokenTotalCurrencyAmount", "0")
+            total_value = str(wallet_summary_safe.get("tokenTotalCurrencyAmount", "0"))
             address.note = f"总资产: ${total_value}, 代币: {len(address.balances)}, DeFi: ${defi_total:.2f}, NFT: ${nft_total:.2f}"
             
             if debug:
@@ -358,9 +539,10 @@ class OKXAddressBalanceCrawler:
             return address
             
         except Exception as e:
-            print(f"解析资产数据时出错: {e}")
-            import traceback
-            traceback.print_exc()
+            if debug:
+                print(f"解析资产数据时出错: {e}")
+                import traceback
+                traceback.print_exc()
             return None
     
     def save_to_file(self, address: Address, filename: Optional[str] = None) -> bool:
@@ -393,14 +575,54 @@ def main():
     """主函数 - 示例用法"""
     crawler = OKXAddressBalanceCrawler()
     
-    print("=== OKX 地址资产爬虫 ===")
+    print("=== OKX 地址资产爬虫 - 高速版 ===")
     
-    # 示例地址 - Solana地址
+    # 示例地址列表 - 测试多个Solana地址
+    test_addresses = [
+        "4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t",
+        "A54Px5ZmqHW6BYhRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7u", 
+        "DCBzkdY6qHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7v",
+        "DNfuF1L6qHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7w",
+        "5j8QfEqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7x",
+        "6k9RgFrHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7y",
+        "7l0ShGsHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7z",
+        "8m1TiHtHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha8a",
+        "9n2UjIuHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha8b",
+        "0o3VkJvHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha8c"
+    ]
+    
+    print(f"准备爬取 {len(test_addresses)} 个地址的资产信息")
+    print("使用多线程高速模式...")
+    
+    # 批量爬取
+    results = crawler.fetch_multiple_addresses_fast(
+        test_addresses, 
+        max_workers=10,
+        debug=False
+    )
+    
+    print("\n=== 爬取结果汇总 ===")
+    success_count = 0
+    for addr, result in results.items():
+        short_addr = addr[:8] + "..." + addr[-4:]
+        if result:
+            success_count += 1
+            token_count = len(result.balances)
+            print(f"✅ {short_addr}: {token_count} 种代币")
+            if result.note:
+                print(f"   {result.note}")
+        else:
+            print(f"❌ {short_addr}: 获取失败")
+    
+    print(f"\n📊 总结:")
+    print(f"成功: {success_count}/{len(test_addresses)} 个地址")
+    print(f"成功率: {success_count/len(test_addresses)*100:.1f}%")
+    
+    # 单个地址详细测试
+    print("\n=== 单个地址详细测试 ===")
     test_address = "4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t"
-    
     print(f"开始爬取地址资产: {test_address}")
     
-    # 获取资产信息
     address = crawler.fetch_address_assets(test_address, debug=False)
     
     if address:
@@ -411,17 +633,18 @@ def main():
         print(f"持有代币数量: {len(address.balances)}")
         
         if address.balances:
-            print("\n=== 代币余额 ===")
-            for i, balance in enumerate(address.balances[:10]):  # 显示前10个
+            print("\n=== 代币余额 (前10个) ===")
+            for i, balance in enumerate(address.balances[:10]):
                 print(f"{i+1}. 地址: {balance.token_contract_address}")
                 print(f"   数量: {balance.amount}")
                 print(f"   价值: ${balance.value}")
                 print()
         
         # 保存到文件
-        crawler.save_to_file(address)
+        if crawler.save_to_file(address):
+            print("✅ 数据已保存到文件")
     else:
-        print("未能获取到资产信息")
+        print("❌ 未能获取到资产信息")
 
 
 if __name__ == "__main__":

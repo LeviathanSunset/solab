@@ -99,40 +99,50 @@ class TokenHolderAnalyzer:
         if len(human_holders) < 3:
             return {"error": "真人持有者数量不足，无法进行有效分析"}
         
-        # 3. 获取每个真人地址的详细资产信息
-        print("📊 正在获取持有者资产信息...")
+        # 3. 获取每个真人地址的详细资产信息 - 使用高速批量模式
+        print(f"📊 正在高速批量获取 {len(human_holders)} 个地址的资产信息...")
         holder_profiles = []
         
-        for i, holder in enumerate(human_holders, 1):  # 分析所有真人地址
-            print(f"  处理 {i}/{len(human_holders)}: {holder['address']}")
+        # 使用高速批量爬取
+        addresses = [holder['address'] for holder in human_holders]
+        
+        # 批量获取所有地址的资产信息
+        address_results = self.balance_crawler.fetch_multiple_addresses_fast(
+            addresses, 
+            max_workers=3,  # 降低并发数提高成功率
+            timeout_per_request=5.0,  # 增加超时时间
+            debug=False
+        )
+        
+        # 处理结果
+        for holder in human_holders:
+            address = holder['address']
+            profile = address_results.get(address)
             
-            try:
-                profile = self.balance_crawler.fetch_address_assets(holder["address"])
-                if profile and profile.balances:
-                    # 检查是否在前20资产中找到目标代币
-                    target_token_found = False
-                    target_balance_in_top20 = "0"
-                    target_value_in_top20 = "0"
-                    
-                    for balance in profile.balances:
-                        if balance.token_contract_address == token_address:
-                            target_token_found = True
-                            target_balance_in_top20 = balance.amount
-                            target_value_in_top20 = balance.value
-                            break
-                    
-                    holder_profiles.append({
-                        "address": holder["address"],
-                        "target_token_balance": holder["balance"],  # 实际持有量
-                        "target_token_value": holder["value_usd"],  # 实际价值
-                        "target_in_top20": target_token_found,  # 是否在前20资产中
-                        "target_balance_top20": target_balance_in_top20,  # 前20中的余额
-                        "target_value_top20": target_value_in_top20,  # 前20中的价值
-                        "profile": profile
-                    })
-            except Exception as e:
-                print(f"    ⚠️ 获取 {holder['address']} 资产失败: {e}")
-                continue
+            if profile and profile.balances:
+                # 检查是否在前20资产中找到目标代币
+                target_token_found = False
+                target_balance_in_top20 = "0"
+                target_value_in_top20 = "0"
+                
+                for balance in profile.balances:
+                    if balance.token_contract_address == token_address:
+                        target_token_found = True
+                        target_balance_in_top20 = balance.amount
+                        target_value_in_top20 = balance.value
+                        break
+                
+                holder_profiles.append({
+                    "address": holder["address"],
+                    "target_token_balance": holder["balance"],  # 实际持有量
+                    "target_token_value": holder["value_usd"],  # 实际价值
+                    "target_in_top20": target_token_found,  # 是否在前20资产中
+                    "target_balance_top20": target_balance_in_top20,  # 前20中的余额
+                    "target_value_top20": target_value_in_top20,  # 前20中的价值
+                    "profile": profile
+                })
+            else:
+                print(f"    ⚠️ 获取 {holder['address']} 资产失败或无资产")
         
         print(f"✅ 成功获取 {len(holder_profiles)} 个地址的详细资产")
         
