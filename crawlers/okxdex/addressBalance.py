@@ -95,48 +95,6 @@ class OKXAddressBalanceCrawler:
             "x-brokerid": "0",
         })
     
-    def test_network_connection(self) -> bool:
-        """测试网络连接"""
-        test_url = "https://httpbin.org/get"  # 简单的测试URL
-        
-        try:
-            print("测试网络连接...")
-            response = requests.get(test_url, timeout=10)
-            if response.status_code == 200:
-                print("✅ 网络连接正常")
-                return True
-            else:
-                print(f"❌ 网络测试失败，状态码: {response.status_code}")
-                return False
-        except Exception as e:
-            print(f"❌ 网络连接测试失败: {e}")
-            return False
-    
-    def test_okx_connection(self) -> bool:
-        """测试OKX域名连接"""
-        test_url = "https://web3.okx.com"
-        
-        try:
-            print("测试OKX域名连接...")
-            response = requests.get(test_url, timeout=15, verify=True)
-            print(f"✅ OKX域名连接正常，状态码: {response.status_code}")
-            return True
-        except requests.exceptions.SSLError as e:
-            print(f"❌ SSL连接错误: {e}")
-            print("尝试禁用SSL验证测试...")
-            try:
-                import urllib3
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                response = requests.get(test_url, timeout=15, verify=False)
-                print(f"⚠️ 禁用SSL验证后连接成功，状态码: {response.status_code}")
-                return True
-            except Exception as fallback_e:
-                print(f"❌ 禁用SSL后仍然失败: {fallback_e}")
-                return False
-        except Exception as e:
-            print(f"❌ OKX连接测试失败: {e}")
-            return False
-
     def fetch_address_assets(self, wallet_address: str, chain_id: int = 501, limit: int = 20, debug: bool = False) -> Optional[Address]:
         """
         获取地址资产信息
@@ -177,20 +135,19 @@ class OKXAddressBalanceCrawler:
                 print(f"请求体: {json.dumps(payload, indent=2)}")
                 print(f"请求头数量: {len(self.session.headers)}")
             
-            print(f"正在获取地址 {wallet_address} 的资产信息...")
-            
             # 增强的网络请求处理
             try:
                 response = self.session.post(
                     self.base_url,
                     params=params,
                     json=payload,
-                    timeout=(10, 30),  # 连接超时10秒，读取超时30秒
+                    timeout=(3, 8),  # 连接超时3秒，读取超时8秒
                     verify=True  # 启用SSL验证
                 )
             except requests.exceptions.SSLError as ssl_error:
-                print(f"SSL验证错误: {ssl_error}")
-                print("尝试禁用SSL验证...")
+                if debug:
+                    print(f"SSL验证错误: {ssl_error}")
+                    print("尝试禁用SSL验证...")
                 
                 try:
                     # 禁用SSL警告
@@ -201,22 +158,21 @@ class OKXAddressBalanceCrawler:
                         self.base_url,
                         params=params,
                         json=payload,
-                        timeout=(10, 30),
+                        timeout=(3, 8),
                         verify=False  # 禁用SSL验证
                     )
-                    print("SSL验证禁用后请求成功")
+                    if debug:
+                        print("SSL验证禁用后请求成功")
                 except Exception as fallback_error:
-                    print(f"禁用SSL后仍然失败: {fallback_error}")
+                    print(f"请求失败: {fallback_error}")
                     return None
                     
             except requests.exceptions.ConnectionError as conn_error:
                 print(f"网络连接错误: {conn_error}")
-                print("请检查网络连接或代理设置")
                 return None
                 
             except requests.exceptions.Timeout as timeout_error:
                 print(f"请求超时: {timeout_error}")
-                print("请稍后重试")
                 return None
             
             if debug:
@@ -224,17 +180,18 @@ class OKXAddressBalanceCrawler:
             
             if response.status_code == 200:
                 data = response.json()
-                print(f"成功获取响应，状态码: {response.status_code}")
                 
                 if debug:
+                    print(f"成功获取响应，状态码: {response.status_code}")
                     print("=== API响应数据结构 ===")
                     print(f"响应数据: {json.dumps(data, indent=2, ensure_ascii=False)}")
                 
                 # 解析响应数据
-                return self._parse_assets_data(data, wallet_address, chain_id)
+                return self._parse_assets_data(data, wallet_address, chain_id, debug)
             else:
                 print(f"请求失败，状态码: {response.status_code}")
-                print(f"响应内容: {response.text}")
+                if debug:
+                    print(f"响应内容: {response.text}")
                 return None
                 
         except requests.exceptions.SSLError as ssl_e:
@@ -265,7 +222,7 @@ class OKXAddressBalanceCrawler:
             print(f"未知错误: {e}")
             return None
     
-    def _parse_assets_data(self, data: Dict[str, Any], wallet_address: str, chain_id: int) -> Optional[Address]:
+    def _parse_assets_data(self, data: Dict[str, Any], wallet_address: str, chain_id: int, debug: bool = False) -> Optional[Address]:
         """解析资产数据"""
         try:
             # 检查响应结构
@@ -281,6 +238,9 @@ class OKXAddressBalanceCrawler:
             
             # 从walletAssetSummary获取汇总信息（如果存在）
             wallet_summary = result.get("walletAssetSummary", {})
+            if wallet_summary is None:
+                wallet_summary = {}
+            
             total_amount = wallet_summary.get("tokenTotalCurrencyAmount", "0")
             defi_amount = wallet_summary.get("defiTotalCurrencyAmount", "0")
             nft_amount = wallet_summary.get("nftTotalCurrencyAmount", "0")
@@ -296,7 +256,8 @@ class OKXAddressBalanceCrawler:
             tokens_info = result.get("tokens", {})
             assets_list = tokens_info.get("tokenlist", [])
             
-            print(f"找到 {len(assets_list)} 种代币")
+            if debug:
+                print(f"找到 {len(assets_list)} 种代币")
             
             for i, asset_data in enumerate(assets_list):
                 try:
@@ -320,17 +281,19 @@ class OKXAddressBalanceCrawler:
                     if is_native:
                         # SOL作为原生代币，使用特殊标识
                         address.add_balance("SOL", str(coin_amount), str(currency_amount))
-                        print(f"发现原生代币 SOL: {coin_amount} (${currency_amount})")
+                        if debug:
+                            print(f"发现原生代币 SOL: {coin_amount} (${currency_amount})")
                     else:
                         # 添加代币余额
                         if token_address:  # 只有有地址的代币才添加
                             address.add_balance(token_address, str(coin_amount), str(currency_amount))
                             
-                            if i < 5:  # 只显示前5个代币的详情
+                            if debug and i < 5:  # 只显示前5个代币的详情
                                 print(f"代币 {i+1}: {token_symbol} - {coin_amount} (${currency_amount})")
                 
                 except Exception as e:
-                    print(f"解析第{i+1}个代币时出错: {e}")
+                    if debug:
+                        print(f"解析第{i+1}个代币时出错: {e}")
                     continue
             
             # 检查是否有DeFi资产
@@ -344,16 +307,20 @@ class OKXAddressBalanceCrawler:
                 nft_total += float(nft.get("valuation", "0"))
             
             # 更新note以包含更多信息
-            total_value = result.get("walletAssetSummary", {}).get("tokenTotalCurrencyAmount", "0")
+            wallet_summary_safe = result.get("walletAssetSummary")
+            if wallet_summary_safe is None:
+                wallet_summary_safe = {}
+            total_value = wallet_summary_safe.get("tokenTotalCurrencyAmount", "0")
             address.note = f"总资产: ${total_value}, 代币: {len(address.balances)}, DeFi: ${defi_total:.2f}, NFT: ${nft_total:.2f}"
             
-            print(f"\n成功解析资产数据:")
-            print(f"  - 总资产价值: ${total_value}")
-            print(f"  - 持有代币种类: {len(address.balances)}")
-            if defi_total > 0:
-                print(f"  - DeFi资产价值: ${defi_total:.2f}")
-            if nft_total > 0:
-                print(f"  - NFT资产价值: ${nft_total:.2f}")
+            if debug:
+                print(f"\n成功解析资产数据:")
+                print(f"  - 总资产价值: ${total_value}")
+                print(f"  - 持有代币种类: {len(address.balances)}")
+                if defi_total > 0:
+                    print(f"  - DeFi资产价值: ${defi_total:.2f}")
+                if nft_total > 0:
+                    print(f"  - NFT资产价值: ${nft_total:.2f}")
             
             return address
             
@@ -393,22 +360,10 @@ def main():
     """主函数 - 示例用法"""
     crawler = OKXAddressBalanceCrawler()
     
-    # 先进行网络测试
-    print("=== 网络连接测试 ===")
-    basic_network = crawler.test_network_connection()
-    okx_network = crawler.test_okx_connection()
-    
-    if not basic_network:
-        print("❌ 基础网络连接失败，请检查网络设置")
-        return
-    
-    if not okx_network:
-        print("⚠️ OKX连接有问题，但仍会尝试API请求")
-    
-    print("\n" + "="*50)
+    print("=== OKX 地址资产爬虫 ===")
     
     # 示例地址 - Solana地址
-    test_address = "DCBzkdY6XtSMNgqeppLtKoAcTYTNKLf6FVtYy5LZvB2G"
+    test_address = "4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t"
     
     print(f"开始爬取地址资产: {test_address}")
     
