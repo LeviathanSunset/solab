@@ -120,7 +120,7 @@ class RapeAnalysisManager:
                 # 分析热门代币
                 qualified_results = analyzer.analyze_top_traded_tokens(
                     preset_name=self.current_preset,
-                    max_tokens=50,  # 增加到50个代币
+                    max_tokens=1000,  # 增加到50个代币
                     delay_between_tokens=3.0,
                     progress_callback=lambda current, total: setattr(self, 'current_token_index', current)
                 )
