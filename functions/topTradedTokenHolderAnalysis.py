@@ -66,7 +66,8 @@ class TopTradedTokenHolderAnalyzer:
     def analyze_top_traded_tokens(self, preset_name: str = 'lowCapGem_24h',
                                 max_tokens: int = 20,
                                 delay_between_tokens: float = 2.0,
-                                progress_callback=None) -> List[Dict[str, Any]]:
+                                progress_callback=None,
+                                qualified_callback=None) -> List[Dict[str, Any]]:
         """
         分析热门交易代币的持有者
         
@@ -74,6 +75,8 @@ class TopTradedTokenHolderAnalyzer:
             preset_name: Jupiter预设名称, 默认为'lowCapGem_24h'
             max_tokens: 最大分析代币数量
             delay_between_tokens: 代币分析间隔时间(秒)
+            progress_callback: 进度回调函数
+            qualified_callback: 发现符合条件代币时的回调函数
             
         Returns:
             符合条件的分析结果列表
@@ -150,7 +153,16 @@ class TopTradedTokenHolderAnalyzer:
                     
                     qualified_results.append(analysis_result)
                     
-                    # 生成并输出报告
+                    # 🚀 立即通过回调发送到群组
+                    if qualified_callback:
+                        try:
+                            self.logger.info(f"🎯 发现符合条件的代币: {token.symbol}, 立即发送到群组")
+                            qualified_callback(analysis_result)
+                            self.logger.info(f"✅ 已立即输出符合条件的代币: {token.symbol}")
+                        except Exception as e:
+                            self.logger.error(f"❌ 立即发送代币 {token.symbol} 失败: {e}")
+                    
+                    # 生成并输出报告到日志
                     self._output_token_report(analysis_result, token)
                     
                     self.logger.log_success(f"分析代币 {token.symbol}", "符合条件, 已添加到结果")

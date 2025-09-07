@@ -117,41 +117,35 @@ class RapeAnalysisManager:
             try:
                 self.logger.info(f"🔄 开始第 {self.current_cycle + 1} 轮分析，预设: {self.current_preset}")
                 
-                # 分析热门代币
+                # 定义即时发送回调函数
+                def instant_send_callback(analysis_result):
+                    """立即发送符合条件的代币"""
+                    self.qualified_count += 1
+                    
+                    # 生成报告
+                    token_info = analysis_result.get('token_info', {})
+                    symbol = token_info.get('symbol', 'Unknown')
+                    
+                    report = analyzer.holder_analyzer.generate_detective_report(
+                        analysis_result, symbol, top_holdings_count=15, show_not_in_top20=False
+                    )
+                    
+                    # 立即发送到群组
+                    self._send_to_group(f"🎯 发现符合条件的代币: {symbol}\n\n{report}")
+                
+                # 分析热门代币 - 传入即时回调
                 qualified_results = analyzer.analyze_top_traded_tokens(
                     preset_name=self.current_preset,
                     max_tokens=1000,  # 增加到1000个代币
                     delay_between_tokens=3.0,
-                    progress_callback=lambda current, total: setattr(self, 'current_token_index', current)
+                    progress_callback=lambda current, total: setattr(self, 'current_token_index', current),
+                    qualified_callback=instant_send_callback  # 🚀 添加即时发送回调
                 )
                 
                 self.total_tokens = 50  # 实际分析的代币数量
                 self.logger.info(f"📊 第 {self.current_cycle + 1} 轮分析完成，发现 {len(qualified_results)} 个符合条件的代币")
                 
-                # 发送符合条件的代币到群组
-                for result in qualified_results:
-                    if not self.is_running:
-                        break
-                    
-                    self.qualified_count += 1
-                    
-                    # 生成报告
-                    token_info = result.get('token_info', {})
-                    symbol = token_info.get('symbol', 'Unknown')
-                    
-                    self.logger.info(f"🎯 发现符合条件的代币: {symbol}, 正在发送报告到群组")
-                    
-                    report = analyzer.holder_analyzer.generate_detective_report(
-                        result, symbol, top_holdings_count=15, show_not_in_top20=False
-                    )
-                    
-                    # 发送到群组
-                    self._send_to_group(f"🎯 发现符合条件的代币: {symbol}\n\n{report}")
-                    
-                    # 输出到日志
-                    self.logger.info(f"✅ 已输出符合条件的代币: {symbol} (第{self.qualified_count}个)")
-                    
-                    time.sleep(2)  # 避免发送过快
+                # 注意：符合条件的代币已经通过回调即时发送到群组了，无需再次发送
                 
                 # 周期完成
                 self.current_cycle += 1
