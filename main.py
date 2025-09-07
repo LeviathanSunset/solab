@@ -79,6 +79,39 @@ class SoLabBot:
             print(f"❌ Bot初始化失败: {e}")
             sys.exit(1)
     
+    def _is_command_for_this_bot(self, message):
+        """检查命令是否是针对这个bot的"""
+        if not message.text or not message.text.startswith('/'):
+            return False
+        
+        # 获取命令部分（第一个单词）
+        command = message.text.split()[0]
+        
+        # 如果命令包含@，检查是否是针对这个bot的
+        if '@' in command:
+            # 获取bot的用户名
+            try:
+                bot_info = self.bot.get_me()
+                bot_username = bot_info.username
+                
+                # 检查命令是否针对这个bot
+                if not command.endswith(f'@{bot_username}'):
+                    return False
+            except:
+                # 如果获取bot信息失败，保守处理
+                return False
+        
+        # 检查是否是已知命令
+        known_commands = ['start', 'help', 'status', 'ping', 'rape']
+        base_command = command.split('@')[0][1:]  # 移除 / 和 @部分
+        
+        # 如果是已知命令，不在这里处理（让其他handler处理）
+        if base_command in known_commands:
+            return False
+        
+        # 只有未知的、针对这个bot的命令才在这里处理
+        return True
+
     def setup_handlers(self):
         """设置命令处理器"""
         
@@ -132,8 +165,8 @@ class SoLabBot:
             self.topic_id
         )
         
-        # 错误处理 - 只处理以 / 开头的命令
-        @self.bot.message_handler(func=lambda message: message.text and message.text.startswith('/'))
+        # 错误处理 - 只处理针对本bot的未知命令
+        @self.bot.message_handler(func=lambda message: self._is_command_for_this_bot(message))
         def handle_unknown_command(message):
             """处理未知命令"""
             command = message.text.split()[0]
