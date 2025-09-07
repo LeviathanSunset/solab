@@ -125,13 +125,21 @@ class RapeAnalysisManager:
                     # 生成报告
                     token_info = analysis_result.get('token_info', {})
                     symbol = token_info.get('symbol', 'Unknown')
+                    name = token_info.get('name', '')
+                    contract_address = token_info.get('contract_address', '')
+                    
+                    # 构建带链接的标题格式: symbol (name) + 链接
+                    if name and name != symbol and not name.startswith("Unknown Token"):
+                        token_display = f"[{symbol} ({name})](https://gmgn.ai/sol/token/{contract_address})"
+                    else:
+                        token_display = f"[{symbol}](https://gmgn.ai/sol/token/{contract_address})"
                     
                     report = analyzer.holder_analyzer.generate_detective_report(
                         analysis_result, symbol, top_holdings_count=15, show_not_in_top20=False
                     )
                     
                     # 立即发送到群组
-                    self._send_to_group(f"🎯 发现符合条件的代币: {symbol}\n\n{report}")
+                    self._send_to_group(f"🎯 发现符合条件的代币: {token_display}\n\n{report}")
                 
                 # 分析热门代币 - 传入即时回调
                 qualified_results = analyzer.analyze_top_traded_tokens(
