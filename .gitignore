@@ -1,8 +1,12 @@
 # Python缓存文件
 __pycache__/
+*/__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
+*.pyo
 
 # 分发/打包
 .Python
