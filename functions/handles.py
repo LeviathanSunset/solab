@@ -142,7 +142,7 @@ class RapeAnalysisManager:
                     self.logger.info(f"🎯 发现符合条件的代币: {symbol}, 正在发送报告到群组")
                     
                     report = analyzer.holder_analyzer.generate_detective_report(
-                        result, symbol, top_holdings_count=15
+                        result, symbol, top_holdings_count=15, show_not_in_top20=False
                     )
                     
                     # 发送到群组

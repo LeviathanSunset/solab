@@ -439,7 +439,8 @@ class TokenHolderAnalyzer:
     
     def generate_detective_report(self, result: Dict[str, Any], 
                                 token_symbol: str = None, 
-                                top_holdings_count: int = 20) -> str:
+                                top_holdings_count: int = 20,
+                                show_not_in_top20: bool = True) -> str:
         """
         生成风格的美观分析报告
         
@@ -447,6 +448,7 @@ class TokenHolderAnalyzer:
             result: 分析结果字典
             token_symbol: 代币符号，如果未提供会尝试从地址推断
             top_holdings_count: 显示前N大持仓的排名
+            show_not_in_top20: 是否显示不在前20资产中的地址详情
             
         Returns:
             格式化的报告字符串
@@ -555,13 +557,13 @@ class TokenHolderAnalyzer:
         report_lines.append(f"📈 统计范围: 分析每个地址的完整持仓，显示被≥3人持有的代币")
         report_lines.append(f"📊 总体情况: {total_human_holders} 个真人地址中的 {analyzed_count} 个已完成分析")
         
-        # 显示目标代币不在前20资产中的地址
+        # 显示目标代币不在前20资产中的地址（可选）
         not_in_top20_holders = []
         for addr, data in result.get('detailed_analysis', {}).items():
             if not data.get('target_in_top20', True):  # 默认True，只有明确为False才算
                 not_in_top20_holders.append(addr)
         
-        if not_in_top20_holders:
+        if not_in_top20_holders and show_not_in_top20:
             report_lines.append(f"\n📉 目标代币不在前20资产中的地址 ({len(not_in_top20_holders)} 个):")
             for i, addr in enumerate(not_in_top20_holders, 1):
                 report_lines.append(f"   {i}. {addr[:6]}...{addr[-4:]}")
