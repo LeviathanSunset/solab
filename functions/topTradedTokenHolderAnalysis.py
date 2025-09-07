@@ -43,7 +43,7 @@ class TopTradedTokenHolderAnalyzer:
         
         # 更严格的筛选条件
         self.min_holders = 5  # 至少5个地址持有
-        self.min_total_value = 500000  # 总价值超过50万美元
+        self.min_total_value = 300000  # 总价值超过30万美元
         
         # 主流稳定币和SOL地址，筛选时排除
         self.excluded_tokens = {
