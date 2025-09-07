@@ -14,6 +14,20 @@ from datetime import datetime
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(__file__))
 
+# 加载环境变量
+try:
+    from dotenv import load_dotenv
+    # 加载 settings/.env 文件
+    env_path = os.path.join(os.path.dirname(__file__), 'settings', '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"✅ 已加载环境变量文件: {env_path}")
+    else:
+        print(f"⚠️  未找到环境变量文件: {env_path}")
+        print("📝 请从 settings/.env.copy 复制并配置 settings/.env 文件")
+except ImportError:
+    print("⚠️  python-dotenv 未安装，将只使用系统环境变量")
+
 from functions.handles import setup_rape_handlers
 from settings.config_manager import ConfigManager
 
@@ -28,11 +42,22 @@ class SoLabBot:
     def load_config(self):
         """加载配置"""
         try:
-            # 从环境变量或配置文件加载
-            self.api_key = os.getenv('TELEGRAM_API_KEY', '8082427042:AAFzh00D42Sv3y5i2GYeNgCfmF-tWSNe9VM')
-            self.chat_id = os.getenv('TELEGRAM_CHAT_ID', '-1002760368002')
-            self.topic_id = os.getenv('TELEGRAM_TOPIC_ID', '71740')
+            # 从环境变量加载，没有默认值
+            self.api_key = os.getenv('TELEGRAM_API_KEY')
+            self.chat_id = os.getenv('TELEGRAM_CHAT_ID')
+            self.topic_id = os.getenv('TELEGRAM_TOPIC_ID')
             
+            # 检查必需的配置是否存在
+            if not self.api_key:
+                print("❌ 错误: 未找到 TELEGRAM_API_KEY 环境变量")
+                print("📝 请创建 settings/.env 文件并配置必要的环境变量")
+                sys.exit(1)
+                
+            if not self.chat_id:
+                print("❌ 错误: 未找到 TELEGRAM_CHAT_ID 环境变量")
+                print("📝 请在 settings/.env 文件中配置 TELEGRAM_CHAT_ID")
+                sys.exit(1)
+                
             print(f"✅ 配置加载成功")
             print(f"📱 群组ID: {self.chat_id}")
             print(f"💬 话题ID: {self.topic_id}")
