@@ -24,15 +24,43 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-# 导入项目模型
+# 导入项目模型和配置管理器
 from functions.models import Address, TokenBalance
+from settings.config_manager import config_manager
 
 
 class OKXAddressBalanceCrawler:
     """OKX地址资产爬虫 - 支持多线程高速爬取"""
     
-    def __init__(self):
+    def __init__(self, performance_mode: str = 'high_speed'):
+        """初始化爬虫
+        
+        Args:
+            performance_mode: 性能模式 ('conservative', 'balanced', 'high_speed', 'lightweight')
+        """
         self.base_url = "https://web3.okx.com/priapi/v2/wallet/asset/profile/all/explorer"
+        
+        # 加载性能配置
+        self.performance_config = config_manager.get_crawler_performance_config(
+            'okx_address_balance', performance_mode
+        )
+        
+        # 如果配置不存在，使用默认平衡配置
+        if not self.performance_config:
+            self.performance_config = {
+                'max_workers': 3,
+                'base_delay': 0.5,
+                'timeout': 5.0,
+                'expected_speed': 2.6,
+                'success_rate': 100.0,
+                'description': "默认平衡配置"
+            }
+        
+        print(f"🔧 使用性能模式: {performance_mode}")
+        print(f"   {self.performance_config.get('description', '无描述')}")
+        print(f"   并发数: {self.performance_config['max_workers']}")
+        print(f"   延迟: {self.performance_config['base_delay']}s")
+        print(f"   预期速度: {self.performance_config['expected_speed']} 地址/秒")
         
         # 为每个线程创建独立的session池
         self.session_pool = []
@@ -183,17 +211,17 @@ class OKXAddressBalanceCrawler:
     
     def fetch_multiple_addresses_fast(self, wallet_addresses: List[str], 
                                      chain_id: int = 501, 
-                                     max_workers: int = 3,  # 降低并发数提高成功率
-                                     timeout_per_request: float = 3.0,
+                                     max_workers: int = None,
+                                     timeout_per_request: float = None,
                                      debug: bool = False) -> Dict[str, Optional[Address]]:
         """
-        高速批量获取多个地址的资产信息 - 优化成功率版本
+        高速批量获取多个地址的资产信息 - 使用配置优化
         
         Args:
             wallet_addresses: 钱包地址列表
             chain_id: 链ID，默认501(Solana)
-            max_workers: 最大并发线程数，默认3（为了提高成功率）
-            timeout_per_request: 每个请求的超时时间(秒)
+            max_workers: 最大并发线程数，None时使用配置值
+            timeout_per_request: 每个请求的超时时间(秒)，None时使用配置值
             debug: 是否开启调试模式
             
         Returns:
@@ -201,6 +229,14 @@ class OKXAddressBalanceCrawler:
         """
         if not wallet_addresses:
             return {}
+        
+        # 使用配置中的参数，如果没有传入的话
+        if max_workers is None:
+            max_workers = self.performance_config['max_workers']
+        if timeout_per_request is None:
+            timeout_per_request = self.performance_config['timeout']
+        
+        base_delay = self.performance_config['base_delay']
         
         print(f"🚀 开始高成功率批量爬取 {len(wallet_addresses)} 个地址资产...")
         print(f"⚡ 使用 {max_workers} 个线程并发处理（优化成功率）")
@@ -211,9 +247,9 @@ class OKXAddressBalanceCrawler:
         # 使用智能延迟策略提高成功率
         def fetch_with_smart_delay(address: str, index: int) -> Tuple[str, Optional[Address]]:
             # 基于索引的智能延迟，避免所有请求同时发起
-            base_delay = (index % max_workers) * 0.3
-            jitter = random.uniform(0.1, 0.5)
-            delay = base_delay + jitter
+            delay_factor = (index % max_workers) * base_delay
+            jitter = random.uniform(0.1, base_delay * 0.5)
+            delay = delay_factor + jitter
             time.sleep(delay)
             
             try:

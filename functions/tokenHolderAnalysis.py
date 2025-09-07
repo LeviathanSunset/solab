@@ -43,10 +43,20 @@ from settings.config_manager import ConfigManager
 class TokenHolderAnalyzer:
     """代币持有者分析器"""
     
-    def __init__(self):
+    def __init__(self, performance_mode: str = 'high_speed'):
+        """初始化分析器
+        
+        Args:
+            performance_mode: 性能模式
+                - 'conservative': 保守模式，最稳定 (1.2 地址/秒)
+                - 'balanced': 平衡模式，推荐使用 (2.6 地址/秒) 
+                - 'high_speed': 高速模式，极限速度 (3.4 地址/秒)
+                - 'lightweight': 轻量模式，适合网络不佳 (2.0 地址/秒)
+        """
+        self.performance_mode = performance_mode
         self.config = ConfigManager()
         self.holder_crawler = SimpleOKXCrawler()
-        self.balance_crawler = OKXAddressBalanceCrawler()
+        self.balance_crawler = OKXAddressBalanceCrawler(performance_mode=performance_mode)
         self.jupiter_crawler = JupiterTokenCrawler()
         
         # 代币信息缓存
@@ -672,8 +682,18 @@ class TokenHolderAnalyzer:
 
 
 def main():
-    """测试函数"""
-    analyzer = TokenHolderAnalyzer()
+    """测试函数 - 可在这里修改性能模式"""
+    
+    # 🔧 在这里修改性能模式:
+    # 'conservative' = 保守模式 (1.2 地址/秒) - 最稳定
+    # 'balanced'     = 平衡模式 (2.6 地址/秒) - 推荐使用  
+    # 'high_speed'   = 高速模式 (3.4 地址/秒) - 极限速度
+    # 'lightweight'  = 轻量模式 (2.0 地址/秒) - 网络不佳时使用
+    
+    PERFORMANCE_MODE = 'high_speed'  # 👈 在这里修改模式
+    
+    print(f"🔧 使用性能模式: {PERFORMANCE_MODE}")
+    analyzer = TokenHolderAnalyzer(performance_mode=PERFORMANCE_MODE)
     
     # 设置认证信息（需要替换为真实数据）
     analyzer.set_auth(

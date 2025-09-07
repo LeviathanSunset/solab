@@ -65,6 +65,39 @@ class ConfigManager:
         presets = self._config.get('crawlers', {}).get('jupiter', {}).get('toptraded', {})
         return presets.get(preset_name)
     
+    def get_crawler_performance_config(self, crawler_name: str, mode: str = 'balanced') -> Optional[Dict[str, Any]]:
+        """获取爬虫性能配置
+        
+        Args:
+            crawler_name: 爬虫名称 (如 'okx_address_balance')
+            mode: 性能模式 ('conservative', 'balanced', 'high_speed', 'lightweight')
+            
+        Returns:
+            性能配置字典，如果不存在则返回None
+        """
+        if not self._config:
+            self.load_config()
+        
+        performance_configs = self._config.get('crawler_performance', {})
+        crawler_configs = performance_configs.get(crawler_name, {})
+        return crawler_configs.get(mode)
+    
+    def list_performance_modes(self, crawler_name: str) -> list:
+        """列出指定爬虫的所有性能模式
+        
+        Args:
+            crawler_name: 爬虫名称
+            
+        Returns:
+            性能模式列表
+        """
+        if not self._config:
+            self.load_config()
+        
+        performance_configs = self._config.get('crawler_performance', {})
+        crawler_configs = performance_configs.get(crawler_name, {})
+        return list(crawler_configs.keys())
+
     def build_jupiter_api_params(self, preset_name: str) -> Optional[Dict[str, Any]]:
         """构建Jupiter API请求参数
         

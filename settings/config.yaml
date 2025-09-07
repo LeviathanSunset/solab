@@ -41,6 +41,46 @@ crawlers:
 
 
 
+# 爬虫性能配置
+crawler_performance:
+  # OKX 地址资产爬虫配置
+  okx_address_balance:
+    # 保守模式 - 最稳定，适合长期运行
+    conservative:
+      max_workers: 1
+      base_delay: 1.0
+      timeout: 5.0
+      expected_speed: 1.2  # 地址/秒
+      success_rate: 100.0
+      description: "最稳定配置，适合长期批量处理"
+    
+    # 平衡模式 - 速度与稳定性兼顾
+    balanced:
+      max_workers: 3
+      base_delay: 0.5
+      timeout: 5.0
+      expected_speed: 2.6  # 地址/秒
+      success_rate: 100.0
+      description: "推荐日常使用，速度稳定性兼顾"
+    
+    # 高速模式 - 追求最大速度
+    high_speed:
+      max_workers: 6
+      base_delay: 0.2
+      timeout: 5.0
+      expected_speed: 3.4  # 地址/秒
+      success_rate: 100.0
+      description: "极限速度配置，适合急速处理"
+    
+    # 轻量模式 - 适合网络较差环境
+    lightweight:
+      max_workers: 2
+      base_delay: 0.8
+      timeout: 8.0
+      expected_speed: 2.0  # 地址/秒
+      success_rate: 100.0
+      description: "适合网络不稳定环境"
+
 # 日志配置
 logging:
   level: "INFO"
