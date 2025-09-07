@@ -183,13 +183,18 @@ class RapeAnalysisManager:
     def _send_to_group(self, message: str):
         """发送消息到群组"""
         try:
+            # 将Markdown链接转换为HTML格式
+            import re
+            # 转换 [text](url) 为 <a href="url">text</a>
+            html_message = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', message)
+            
             if self.topic_id:
                 # 发送到指定话题
                 self.bot.send_message(
                     chat_id=self.target_chat_id,
-                    text=message,
+                    text=html_message,
                     message_thread_id=int(self.topic_id),
-                    parse_mode='Markdown',
+                    parse_mode='HTML',  # 改为HTML格式
                     disable_web_page_preview=True  # 禁用链接预览
                 )
                 self.logger.debug(f"📤 消息已发送到话题 {self.topic_id}")
@@ -197,8 +202,8 @@ class RapeAnalysisManager:
                 # 发送到群组
                 self.bot.send_message(
                     chat_id=self.target_chat_id,
-                    text=message,
-                    parse_mode='Markdown',
+                    text=html_message,
+                    parse_mode='HTML',  # 改为HTML格式
                     disable_web_page_preview=True  # 禁用链接预览
                 )
                 self.logger.debug("📤 消息已发送到群组")
