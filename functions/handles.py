@@ -1,8 +1,27 @@
 #!/usr/bin/env python3
 """
 SoLab Telegram Bot 命令处理器
-Bot Command Handlers
-"""
+Bot    def start_analysis(self, preset_name: str, user_id: int):
+        """开始持续分析"""
+        if self.is_running:
+            return False, "分析已在运行中"
+        
+        self.is_running = True
+        self.current_preset = preset_name
+        self.current_cycle = 1
+        self.current_token_index = 0
+        self.total_tokens = 50  # 初始化总代币数量
+        self.qualified_count = 0
+        
+        # 启动分析线程
+        self.analysis_thread = threading.Thread(
+            target=self._analysis_loop,
+            args=(user_id,),
+            daemon=True
+        )
+        self.analysis_thread.start()
+        
+        return True, f"已启动持续分析，使用预设: {preset_name}""
 
 import os
 import sys
@@ -19,6 +38,7 @@ from telebot import types
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from functions.topTradedTokenHolderAnalysis import TopTradedTokenHolderAnalyzer
+from functions.logger import CrawlerLogger, get_logger
 from settings.config_manager import ConfigManager
 
 class RapeAnalysisManager:
@@ -36,6 +56,9 @@ class RapeAnalysisManager:
         self.qualified_count = 0
         self.analysis_thread = None
         self.config_manager = ConfigManager()
+        
+        # 初始化日志器
+        self.logger = get_logger("TelegramBot.AnalysisManager")
         
     def get_available_presets(self) -> List[str]:
         """获取可用的Jupiter预设"""
@@ -83,11 +106,14 @@ class RapeAnalysisManager:
         if not self.is_running:
             return "🔴 分析未运行"
         
+        # 确保进度显示正确
+        progress_str = f"{self.current_token_index}/{self.total_tokens}" if self.total_tokens > 0 else "准备中..."
+        
         status = f"""
 🟢 分析运行中
 📊 预设: {self.current_preset}
 🔄 周期: {self.current_cycle}
-📈 进度: {self.current_token_index}/{self.total_tokens}
+📈 进度: {progress_str}
 ✅ 已找到符合条件代币: {self.qualified_count}个
         """
         return status.strip()
@@ -107,16 +133,18 @@ class RapeAnalysisManager:
         
         while self.is_running:
             try:
-                print(f"🔄 开始第 {self.current_cycle} 轮分析，预设: {self.current_preset}")
+                self.logger.info(f"🔄 开始第 {self.current_cycle + 1} 轮分析，预设: {self.current_preset}")
                 
                 # 分析热门代币
                 qualified_results = analyzer.analyze_top_traded_tokens(
                     preset_name=self.current_preset,
-                    max_tokens=15,
-                    delay_between_tokens=3.0
+                    max_tokens=50,  # 增加到50个代币
+                    delay_between_tokens=3.0,
+                    progress_callback=lambda current, total: setattr(self, 'current_token_index', current)
                 )
                 
-                self.total_tokens = 15  # 实际分析的代币数量
+                self.total_tokens = 50  # 实际分析的代币数量
+                self.logger.info(f"📊 第 {self.current_cycle + 1} 轮分析完成，发现 {len(qualified_results)} 个符合条件的代币")
                 
                 # 发送符合条件的代币到群组
                 for result in qualified_results:
@@ -129,12 +157,17 @@ class RapeAnalysisManager:
                     token_info = result.get('token_info', {})
                     symbol = token_info.get('symbol', 'Unknown')
                     
+                    self.logger.info(f"🎯 发现符合条件的代币: {symbol}, 正在发送报告到群组")
+                    
                     report = analyzer.holder_analyzer.generate_detective_report(
                         result, symbol, top_holdings_count=15
                     )
                     
                     # 发送到群组
                     self._send_to_group(f"🎯 发现符合条件的代币: {symbol}\n\n{report}")
+                    
+                    # 输出到日志
+                    self.logger.info(f"✅ 已输出符合条件的代币: {symbol} (第{self.qualified_count}个)")
                     
                     time.sleep(2)  # 避免发送过快
                 
@@ -144,7 +177,7 @@ class RapeAnalysisManager:
                 
                 if self.is_running:
                     cycle_summary = f"""
-🔄 第 {self.current_cycle - 1} 轮分析完成
+🔄 第 {self.current_cycle} 轮分析完成
 
 📊 预设: {self.current_preset}
 🎯 本轮发现: {len(qualified_results)} 个符合条件代币
@@ -154,13 +187,14 @@ class RapeAnalysisManager:
 🔄 准备开始下一轮分析...
                     """
                     self._send_to_group(cycle_summary.strip())
+                    self.logger.info(f"📊 周期 {self.current_cycle} 分析统计已发送，等待下一轮")
                     
                     # 等待一段时间再开始下一轮
                     time.sleep(30)
                 
             except Exception as e:
                 error_msg = f"❌ 分析过程中发生错误: {e}"
-                print(error_msg)
+                self.logger.error(error_msg)
                 self._send_to_group(error_msg)
                 time.sleep(60)  # 出错后等待更长时间
     
@@ -176,6 +210,7 @@ class RapeAnalysisManager:
                     parse_mode='Markdown',
                     disable_web_page_preview=True  # 禁用链接预览
                 )
+                self.logger.debug(f"📤 消息已发送到话题 {self.topic_id}")
             else:
                 # 发送到群组
                 self.bot.send_message(
@@ -184,8 +219,10 @@ class RapeAnalysisManager:
                     parse_mode='Markdown',
                     disable_web_page_preview=True  # 禁用链接预览
                 )
+                self.logger.debug("📤 消息已发送到群组")
         except Exception as e:
-            print(f"发送消息到群组失败: {e}")
+            error_msg = f"发送消息到群组失败: {e}"
+            self.logger.error(error_msg)
 
 
 def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
@@ -194,9 +231,35 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
     # 创建分析管理器
     analysis_manager = RapeAnalysisManager(bot, chat_id, topic_id)
     
+    def _should_respond_to_command(message):
+        """检查是否应该响应此命令"""
+        if not message.text or not message.text.startswith('/'):
+            return True
+        
+        command = message.text.split()[0]
+        
+        # 如果命令包含@，检查是否是针对这个bot的
+        if '@' in command:
+            try:
+                bot_info = bot.get_me()
+                bot_username = bot_info.username
+                
+                # 如果不是针对这个bot的命令，不响应
+                if not command.endswith(f'@{bot_username}'):
+                    return False
+            except:
+                # 如果获取bot信息失败，不响应带@的命令
+                return False
+        
+        return True
+    
     @bot.message_handler(commands=['rape'])
     def rape_command(message):
         """处理 /rape 命令 - 根据参数执行不同操作"""
+        # 检查命令是否针对此bot
+        if not _should_respond_to_command(message):
+            return
+            
         # 解析命令参数
         command_text = message.text.strip()
         parts = command_text.split()

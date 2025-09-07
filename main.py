@@ -98,18 +98,31 @@ class SoLabBot:
                 if not command.endswith(f'@{bot_username}'):
                     return False
             except:
-                # 如果获取bot信息失败，保守处理
+                # 如果获取bot信息失败，保守处理：不响应带@的命令
                 return False
         
-        # 检查是否是已知命令
-        known_commands = ['start', 'help', 'status', 'ping', 'rape']
-        base_command = command.split('@')[0][1:]  # 移除 / 和 @部分
+        return True
+    
+    def _should_respond_to_command(self, message):
+        """检查是否应该响应此命令"""
+        if not message.text or not message.text.startswith('/'):
+            return True
         
-        # 如果是已知命令，不在这里处理（让其他handler处理）
-        if base_command in known_commands:
-            return False
+        command = message.text.split()[0]
         
-        # 只有未知的、针对这个bot的命令才在这里处理
+        # 如果命令包含@，检查是否是针对这个bot的
+        if '@' in command:
+            try:
+                bot_info = self.bot.get_me()
+                bot_username = bot_info.username
+                
+                # 如果不是针对这个bot的命令，不响应
+                if not command.endswith(f'@{bot_username}'):
+                    return False
+            except:
+                # 如果获取bot信息失败，不响应带@的命令
+                return False
+        
         return True
 
     def setup_handlers(self):
@@ -119,6 +132,10 @@ class SoLabBot:
         @self.bot.message_handler(commands=['start', 'help'])
         def send_welcome(message):
             """欢迎信息"""
+            # 检查命令是否针对此bot
+            if not self._should_respond_to_command(message):
+                return
+                
             welcome_text = """
 🤖 SoLab Bot 已启动
 
@@ -144,6 +161,10 @@ class SoLabBot:
         @self.bot.message_handler(commands=['status'])
         def bot_status(message):
             """Bot状态"""
+            # 检查命令是否针对此bot
+            if not self._should_respond_to_command(message):
+                return
+                
             status_text = f"""
 🤖 Bot状态: 运行中
 ⏰ 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -156,6 +177,10 @@ class SoLabBot:
         @self.bot.message_handler(commands=['ping'])
         def ping_command(message):
             """测试连接"""
+            # 检查命令是否针对此bot
+            if not self._should_respond_to_command(message):
+                return
+                
             self.bot.reply_to(message, "🏓 Pong! Bot正常运行")
         
         # 设置rape分析处理器
