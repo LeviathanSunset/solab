@@ -26,7 +26,7 @@ class JupiterTokenCrawler:
         self.base_url = "https://datapi.jup.ag/v1/assets/search"
         self.headers = {
             "accept": "application/json",
-            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-encoding": "gzip, deflate",  # 移除 br, zstd 避免压缩问题
             "accept-language": "en-US,en;q=0.9,zh-HK;q=0.8,zh-CN;q=0.7,zh;q=0.6,es-MX;q=0.5,es;q=0.4,ru-RU;q=0.3,ru;q=0.2",
             "origin": "https://jup.ag",
             "referer": "https://jup.ag/",

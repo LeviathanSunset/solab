@@ -506,7 +506,8 @@ class TokenHolderAnalyzer:
             name = token_info.get('name', '')
             
             # 构建显示名称和链接
-            if name and name != symbol:
+            # 如果名称以"Unknown Token"开头，就不显示名称部分
+            if name and name != symbol and not name.startswith("Unknown Token"):
                 # 创建带链接的显示名称，使用markdown格式避免链接预览
                 display_name = f"[{symbol} ({name})](https://gmgn.ai/sol/token/{token_addr})"
             else:
