@@ -1,27 +1,9 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 SoLab Telegram Bot 命令处理器
-Bot    def start_analysis(self, preset_name: str, user_id: int):
-        """开始持续分析"""
-        if self.is_running:
-            return False, "分析已在运行中"
-        
-        self.is_running = True
-        self.current_preset = preset_name
-        self.current_cycle = 1
-        self.current_token_index = 0
-        self.total_tokens = 50  # 初始化总代币数量
-        self.qualified_count = 0
-        
-        # 启动分析线程
-        self.analysis_thread = threading.Thread(
-            target=self._analysis_loop,
-            args=(user_id,),
-            daemon=True
-        )
-        self.analysis_thread.start()
-        
-        return True, f"已启动持续分析，使用预设: {preset_name}""
+Command Handlers for SoLab Telegram Bot
+"""
 
 import os
 import sys
