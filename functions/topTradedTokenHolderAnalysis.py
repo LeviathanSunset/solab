@@ -47,7 +47,7 @@ class TopTradedTokenHolderAnalyzer:
         
         # 主流稳定币和SOL地址，筛选时排除
         self.excluded_tokens = {
-            "So11111111111111111111111111111111111111112",  # SOL
+            "So11111111111111111111111111111111111111112",  # SOL 完整地址
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
             "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
         }
@@ -162,6 +162,7 @@ class TopTradedTokenHolderAnalyzer:
         """
         common_holdings = analysis_result.get('common_holdings', {})
         top_tokens = common_holdings.get('top_common_tokens', {})
+        token_info_map = common_holdings.get('token_info_map', {})
         
         # 检查是否有代币满足条件（除了目标代币本身）
         target_address = analysis_result['token_address']
@@ -174,6 +175,11 @@ class TopTradedTokenHolderAnalyzer:
             # 跳过主流稳定币和SOL
             if token_addr in self.excluded_tokens:
                 continue
+            
+            # 智能识别SOL：检查是否为SOL的特殊格式
+            if self._is_sol_token(token_addr, token_info_map):
+                print(f"    📊 跳过SOL代币: {token_info.get('symbol', 'Unknown')} (识别为SOL)")
+                continue
                 
             holder_count = token_info['holder_count']
             total_value = token_info['total_value']
@@ -184,6 +190,33 @@ class TopTradedTokenHolderAnalyzer:
                 return True
         
         print(f"    📊 无符合条件的共同持仓 (需要: ≥{self.min_holders}人持有 且 ≥${self.min_total_value:,}，排除主流币)")
+        return False
+    
+    def _is_sol_token(self, token_addr: str, token_info_map: Dict[str, Any]) -> bool:
+        """
+        智能识别是否为SOL代币
+        
+        Args:
+            token_addr: 代币地址/键名
+            token_info_map: 代币信息映射
+            
+        Returns:
+            是否为SOL代币
+        """
+        # 检查是否为完整的SOL地址
+        if token_addr == "So11111111111111111111111111111111111111112":
+            return True
+        
+        # 检查token_info_map中的详细信息
+        token_info = token_info_map.get(token_addr, {})
+        if token_info:
+            symbol = token_info.get('symbol', '').upper()
+            name = token_info.get('name', '').upper()
+            
+            # 识别SOL的特征：symbol包含"SOL...SOL"，name包含"UNKNOWN TOKEN (SOL"
+            if 'SOL...SOL' in symbol or 'UNKNOWN TOKEN (SOL' in name:
+                return True
+        
         return False
     
     def _output_token_report(self, analysis_result: Dict[str, Any], token) -> None:

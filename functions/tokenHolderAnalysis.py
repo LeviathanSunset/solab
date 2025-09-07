@@ -505,14 +505,15 @@ class TokenHolderAnalyzer:
             symbol = token_info.get('symbol', f"{token_addr[:6]}...")
             name = token_info.get('name', '')
             
-            # 构建显示名称
+            # 构建显示名称和链接
             if name and name != symbol:
-                display_name = f"{symbol} ({name})"
+                # 创建带链接的显示名称，使用markdown格式避免链接预览
+                display_name = f"[{symbol} ({name})](https://gmgn.ai/sol/token/{token_addr})"
             else:
-                display_name = symbol
+                display_name = f"[{symbol}](https://gmgn.ai/sol/token/{token_addr})"
             
-            # 生成 gmgn 链接
-            gmgn_url = f" (https://gmgn.ai/sol/token/{token_addr})"
+            # 不再需要单独的 gmgn_url
+            gmgn_url = ""
             
             # 格式化金额
             if total_token_value >= 1000000:

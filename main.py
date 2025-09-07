@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""
+SoLab Telegram Bot 主程序
+Simple Telegram Bot Main Program
+"""
+
+import os
+import sys
+import time
+import telebot
+from telebot import types
+from datetime import datetime
+
+# 添加项目根目录到路径
+sys.path.append(os.path.dirname(__file__))
+
+from functions.handles import setup_rape_handlers
+from settings.config_manager import ConfigManager
+
+class SoLabBot:
+    """SoLab Telegram Bot 主类"""
+    
+    def __init__(self):
+        self.config_manager = ConfigManager()
+        self.load_config()
+        self.setup_bot()
+        
+    def load_config(self):
+        """加载配置"""
+        try:
+            # 从环境变量或配置文件加载
+            self.api_key = os.getenv('TELEGRAM_API_KEY', '8082427042:AAFzh00D42Sv3y5i2GYeNgCfmF-tWSNe9VM')
+            self.chat_id = os.getenv('TELEGRAM_CHAT_ID', '-1002760368002')
+            self.topic_id = os.getenv('TELEGRAM_TOPIC_ID', '71740')
+            
+            print(f"✅ 配置加载成功")
+            print(f"📱 群组ID: {self.chat_id}")
+            print(f"💬 话题ID: {self.topic_id}")
+            
+        except Exception as e:
+            print(f"❌ 配置加载失败: {e}")
+            sys.exit(1)
+    
+    def setup_bot(self):
+        """初始化bot"""
+        try:
+            self.bot = telebot.TeleBot(self.api_key)
+            print("✅ Bot初始化成功")
+            
+            # 设置命令处理器
+            self.setup_handlers()
+            
+        except Exception as e:
+            print(f"❌ Bot初始化失败: {e}")
+            sys.exit(1)
+    
+    def setup_handlers(self):
+        """设置命令处理器"""
+        
+        # 基础命令处理器
+        @self.bot.message_handler(commands=['start', 'help'])
+        def send_welcome(message):
+            """欢迎信息"""
+            welcome_text = """
+🤖 SoLab Bot 已启动
+
+📋 可用命令:
+/start - 显示欢迎信息
+/help - 显示帮助信息
+/status - 显示bot状态
+/ping - 测试连接
+/rape - 代币分析相关命令
+  • /rape - 查看分析状态
+  • /rape on - 启动分析
+  • /rape off - 停止分析
+
+🔧 功能:
+• 持续监控热门代币
+• 智能持有者分析
+• 自动推送符合条件的代币
+
+💡 使用 /rape on 开始分析
+            """
+            self.bot.reply_to(message, welcome_text.strip())
+        
+        @self.bot.message_handler(commands=['status'])
+        def bot_status(message):
+            """Bot状态"""
+            status_text = f"""
+🤖 Bot状态: 运行中
+⏰ 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+📱 群组ID: {self.chat_id}
+💬 话题ID: {self.topic_id}
+🔧 功能: 正常
+            """
+            self.bot.reply_to(message, status_text.strip())
+        
+        @self.bot.message_handler(commands=['ping'])
+        def ping_command(message):
+            """测试连接"""
+            self.bot.reply_to(message, "🏓 Pong! Bot正常运行")
+        
+        # 设置rape分析处理器
+        self.analysis_manager = setup_rape_handlers(
+            self.bot, 
+            self.chat_id, 
+            self.topic_id
+        )
+        
+        # 错误处理 - 只处理以 / 开头的命令
+        @self.bot.message_handler(func=lambda message: message.text and message.text.startswith('/'))
+        def handle_unknown_command(message):
+            """处理未知命令"""
+            command = message.text.split()[0]
+            self.bot.reply_to(
+                message, 
+                f"❓ 未知命令 {command}。使用 /help 查看可用命令"
+            )
+    
+    def start_polling(self):
+        """开始轮询"""
+        print("🚀 Bot开始运行...")
+        print("按 Ctrl+C 停止bot")
+        
+        try:
+            # 设置轮询参数
+            self.bot.infinity_polling(
+                timeout=10,
+                long_polling_timeout=5,
+                none_stop=True,
+                interval=0
+            )
+        except KeyboardInterrupt:
+            print("\n🛑 收到停止信号")
+        except Exception as e:
+            print(f"❌ Bot运行错误: {e}")
+        finally:
+            self.stop_bot()
+    
+    def stop_bot(self):
+        """停止bot"""
+        try:
+            # 停止正在运行的分析
+            if hasattr(self, 'analysis_manager') and self.analysis_manager:
+                self.analysis_manager.stop_analysis()
+            
+            # 停止bot
+            self.bot.stop_polling()
+            print("👋 Bot已停止")
+            
+        except Exception as e:
+            print(f"⚠️ Bot停止时发生错误: {e}")
+    
+    def send_startup_notification(self):
+        """发送启动通知"""
+        try:
+            startup_msg = f"""
+🚀 SoLab Bot 已启动
+
+⏰ 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🤖 状态: 正常运行
+📋 使用 /help 查看可用命令
+
+💡 准备就绪，可以开始使用！
+            """
+            
+            if self.topic_id:
+                self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=startup_msg.strip(),
+                    message_thread_id=int(self.topic_id)
+                )
+            else:
+                self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=startup_msg.strip()
+                )
+            
+            print("📨 启动通知已发送")
+            
+        except Exception as e:
+            print(f"⚠️ 发送启动通知失败: {e}")
+
+
+def main():
+    """主函数"""
+    print("="*50)
+    print("🤖 SoLab Telegram Bot")
+    print("="*50)
+    
+    try:
+        # 创建bot实例
+        bot = SoLabBot()
+        
+        # 发送启动通知
+        bot.send_startup_notification()
+        
+        # 开始运行
+        bot.start_polling()
+        
+    except Exception as e:
+        print(f"❌ 程序启动失败: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

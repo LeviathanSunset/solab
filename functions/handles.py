@@ -116,7 +116,7 @@ class RapeAnalysisManager:
                     delay_between_tokens=3.0
                 )
                 
-                self.total_tokens = 15  # 或者从结果中获取实际数量
+                self.total_tokens = 15  # 实际分析的代币数量
                 
                 # 发送符合条件的代币到群组
                 for result in qualified_results:
@@ -173,14 +173,16 @@ class RapeAnalysisManager:
                     chat_id=self.target_chat_id,
                     text=message,
                     message_thread_id=int(self.topic_id),
-                    parse_mode='HTML' if '<' in message else None
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True  # 禁用链接预览
                 )
             else:
                 # 发送到群组
                 self.bot.send_message(
                     chat_id=self.target_chat_id,
                     text=message,
-                    parse_mode='HTML' if '<' in message else None
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True  # 禁用链接预览
                 )
         except Exception as e:
             print(f"发送消息到群组失败: {e}")
