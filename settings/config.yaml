@@ -1,0 +1,48 @@
+# SoLab 爬虫配置文件
+# 配置各种爬虫的预设参数
+
+# 爬虫预设配置
+crawlers:
+  # Jupiter 相关预设
+  jupiter:
+    # 热门交易代币预设
+    toptraded:
+      # 低市值可疑交易量预设 - 5分钟
+      lowCapSusVol_5m:
+        timeFrame: "5m"
+        mintAuthorityDisabled: true
+        freezeAuthorityDisabled: true
+        minLiquidity: 3000
+        minVolume: 750
+        maxMcap: 100000
+        hasSocials: true
+        minTokenAge: 1500 # 单位是分钟
+      
+      # 趋势代币预设 - 24小时
+      trending_24h:
+        timeFrame: "24h"
+        mintAuthorityDisabled: true
+        freezeAuthorityDisabled: true
+        minLiquidity: 3000
+        minMcap: 100000
+        maxMcap: 10000000
+        hasSocials: true
+      
+      # 低市值潜力代币预设 - 24小时
+      lowCapGem_24h:
+        timeFrame: "24h"
+        mintAuthorityDisabled: true
+        freezeAuthorityDisabled: true
+        minLiquidity: 3000
+        minVolume: 6000
+        maxMcap: 75000
+        hasSocials: true
+        minTokenAge: 1440
+
+
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/solab.log"
