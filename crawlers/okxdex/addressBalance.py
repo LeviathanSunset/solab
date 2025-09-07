@@ -167,7 +167,7 @@ class OKXAddressBalanceCrawler:
                 "address": wallet_address,
                 "forceRefresh": True,
                 "page": 1,
-                "limit": 100,  # 增加限制以获取更多代币
+                "limit": 20,  # 增加限制以获取更多代币
                 "chainIndexes": [chain_id]
             }
             
