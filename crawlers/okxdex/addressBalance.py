@@ -54,13 +54,35 @@ class OKXAddressBalanceCrawler:
             "x-utc": "0",
             "x-zkdex-env": "0",
         })
+        
+        # 存储认证信息
+        self.auth_cookie = None
+        self.auth_fp_token = None
+        self.auth_verify_sign = None
+        self.auth_verify_token = None
+        self.auth_dev_id = None
+        self.auth_site_info = None
+    
+    def set_auth(self, cookie: str, fp_token: str, verify_sign: str, 
+                 verify_token: str, dev_id: str, site_info: str):
+        """设置认证信息"""
+        self.auth_cookie = cookie
+        self.auth_fp_token = fp_token
+        self.auth_verify_sign = verify_sign
+        self.auth_verify_token = verify_token
+        self.auth_dev_id = dev_id
+        self.auth_site_info = site_info
+        
+        # 更新设备ID
+        self.session.headers["devid"] = dev_id
+        self.session.headers["device-token"] = dev_id
     
     def _update_dynamic_headers(self, wallet_address: str):
         """更新动态请求头"""
         current_timestamp = int(time.time() * 1000)
         
-        # 完整的cookie字符串（基于你提供的请求信息）
-        cookie_string = (
+        # 使用存储的认证信息或默认值
+        cookie_string = self.auth_cookie if self.auth_cookie else (
             "devId=01980a38-038a-44d9-8da3-a8276bbcb5b9; "
             "ok_site_info===QfxojI5RXa05WZiwiIMFkQPx0Rfh1SPJiOiUGZvNmIsICUKJiOi42bpdWZyJye; "
             "locale=en_US; "
@@ -82,18 +104,29 @@ class OKXAddressBalanceCrawler:
             "_ga=GA1.1.2083537763.1750302376"
         )
         
-        self.session.headers.update({
+        fp_token = self.auth_fp_token if self.auth_fp_token else "eyJraWQiOiIxNjgzMzgiLCJhbGciOiJFUzI1NiJ9.eyJpYXQiOjE3NTcyMjc1ODksImVmcCI6Ikw1bHcvc0JPNENzV040MXB4MVlTLzRUSjBQaDViZlg0QjhiMTQrTGlHK21NdEt6WWx4TWpFdi9yK0o2MXlCcnIiLCJkaWQiOiIwMTk4MGEzOC0wMzhhLTQ0ZDktOGRhMy1hODI3NmJiY2I1YjkiLCJjcGsiOiJNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUVGOGE4RnFDNElLWDJxSHFaOHhaamJnd3BiMDloU2VCSWdxSkdjZ1FEWng0SEp2Z1lIN0g3NE5QblZsRHFWWWNUR0VBWm41aUw4bWdEQTVKbjY5SHJ5Zz09In0.Z1TlLWz0sQ3TvPxo6czcnmZjw1oQ20rvscyTT0CNCx3_e9zPa2WJrfppdAlJ5GbrqqEwyfI2upOd-fy2UGFnSg"
+        
+        site_info = self.auth_site_info if self.auth_site_info else "==QfxojI5RXa05WZiwiIMFkQPx0Rfh1SPJiOiUGZvNmIsICUKJiOi42bpdWZyJye"
+        
+        headers_update = {
             "referer": f"https://web3.okx.com/portfolio/{wallet_address}/analysis",
             "x-request-timestamp": str(current_timestamp),
             "x-id-group": f"{current_timestamp}-c-15",
             "cookie": cookie_string,
             "b-locale": "en_US",
-            "x-site-info": "==QfxojI5RXa05WZiwiIMFkQPx0Rfh1SPJiOiUGZvNmIsICUKJiOi42bpdWZyJye",
-            # 添加更多必需的头
-            "x-fptoken": "eyJraWQiOiIxNjgzMzgiLCJhbGciOiJFUzI1NiJ9.eyJpYXQiOjE3NTcyMjc1ODksImVmcCI6Ikw1bHcvc0JPNENzV040MXB4MVlTLzRUSjBQaDViZlg0QjhiMTQrTGlHK21NdEt6WWx4TWpFdi9yK0o2MXlCcnIiLCJkaWQiOiIwMTk4MGEzOC0wMzhhLTQ0ZDktOGRhMy1hODI3NmJiY2I1YjkiLCJjcGsiOiJNRmt3RXdZSEtvWkl6ajBDQVFZSUtvWkl6ajBEQVFjRFFnQUVGOGE4RnFDNElLWDJxSHFaOHhaamJnd3BiMDloU2VCSWdxSkdjZ1FEWng0SEp2Z1lIN0g3NE5QblZsRHFWWWNUR0VBWm41aUw4bWdEQTVKbjY5SHJ5Zz09In0.Z1TlLWz0sQ3TvPxo6czcnmZjw1oQ20rvscyTT0CNCx3_e9zPa2WJrfppdAlJ5GbrqqEwyfI2upOd-fy2UGFnSg",
+            "x-site-info": site_info,
+            "x-fptoken": fp_token,
             "x-fptoken-signature": "{P1363}a+WvAdH7qkrC168mAWUm9m6Ij5vnXVeh83m1fL+bYGwYhtIpK92pOSWwIbXmILxMj93b7GYNGE6EEm4Ei7f8IA==",
             "x-brokerid": "0",
-        })
+        }
+        
+        # 如果有验证签名和令牌，添加它们
+        if self.auth_verify_sign:
+            headers_update["ok-verify-sign"] = self.auth_verify_sign
+        if self.auth_verify_token:
+            headers_update["ok-verify-token"] = self.auth_verify_token
+            
+        self.session.headers.update(headers_update)
     
     def fetch_address_assets(self, wallet_address: str, chain_id: int = 501, limit: int = 20, debug: bool = False) -> Optional[Address]:
         """
