@@ -441,7 +441,7 @@ class TokenHolderAnalyzer:
                                 token_symbol: str = None, 
                                 top_holdings_count: int = 20) -> str:
         """
-        生成DETECTIVE风格的美观分析报告
+        生成风格的美观分析报告
         
         Args:
             result: 分析结果字典
@@ -722,8 +722,6 @@ def main():
     print("="*60)
     detective_report = analyzer.generate_detective_report(result, "DETECTIVE")
     print(detective_report)
-    
-    print(f"\n📁 详细结果已保存到: {filepath}")
 
 
 if __name__ == "__main__":
