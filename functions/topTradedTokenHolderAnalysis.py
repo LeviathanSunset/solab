@@ -24,6 +24,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # 导入项目模块
 from crawlers.jupiter.topTradedTokens import JupiterTopTradedCrawler
+from crawlers.okxdex.addressProfileTxs import OKXTransactionCrawler
 from functions.tokenHolderAnalysis import TokenHolderAnalyzer
 from functions.logger import CrawlerLogger, get_logger
 from settings.config_manager import ConfigManager
@@ -42,6 +43,7 @@ class TopTradedTokenHolderAnalyzer:
         self.config = ConfigManager()
         self.jupiter_crawler = JupiterTopTradedCrawler()
         self.holder_analyzer = TokenHolderAnalyzer(performance_mode=performance_mode)
+        self.tx_crawler = OKXTransactionCrawler()  # 新增交易数据爬虫
         
         # 初始化日志器
         self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
@@ -140,6 +142,11 @@ class TopTradedTokenHolderAnalyzer:
                         f"{token.symbol} ({token.contract_address[:8]}...)",
                         f"符合持有者条件 - 大户共同持仓分析"
                     )
+                    
+                    # 🔥 新增: 分析top holders的7日交易数据
+                    transaction_analysis = self._analyze_holders_transactions(analysis_result, token.symbol)
+                    if transaction_analysis:
+                        analysis_result['transaction_analysis'] = transaction_analysis
                     
                     # 添加代币基本信息
                     analysis_result['token_info'] = {
@@ -302,6 +309,111 @@ class TopTradedTokenHolderAnalyzer:
             self.logger.info("❌ 本次分析中没有代币符合条件")
         
         self.logger.info("🎉"*20)
+    
+    def _analyze_holders_transactions(self, analysis_result: Dict[str, Any], token_symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        分析目标代币top holders的7日交易次数
+        
+        Args:
+            analysis_result: 持有者分析结果
+            token_symbol: 代币符号
+            
+        Returns:
+            交易分析结果字典或None
+        """
+        try:
+            self.logger.info(f"📊 开始分析 {token_symbol} top holders 的7日交易数据...")
+            
+            # 获取人类持有者地址
+            detailed_holders = analysis_result.get('detailed_holders', [])
+            if not detailed_holders:
+                self.logger.warning(f"⚠️ {token_symbol} 没有详细持有者数据，跳过交易分析")
+                return None
+            
+            # 提取前20个持有者地址进行交易分析
+            top_holder_addresses = []
+            for holder in detailed_holders[:20]:  # 限制分析前20个大户
+                if holder.get('address'):
+                    top_holder_addresses.append(holder['address'])
+            
+            if not top_holder_addresses:
+                self.logger.warning(f"⚠️ {token_symbol} 没有有效的持有者地址")
+                return None
+            
+            self.logger.info(f"🔍 分析 {len(top_holder_addresses)} 个 {token_symbol} top holders 的交易数据...")
+            
+            # 批量获取7日交易数据 (period=3 表示7天)
+            transaction_data = self.tx_crawler.get_multiple_addresses_data(
+                top_holder_addresses, 
+                period=3,  # 7日数据
+                chain_id=501
+            )
+            
+            if not transaction_data:
+                self.logger.warning(f"⚠️ {token_symbol} 未获取到任何交易数据")
+                return None
+            
+            # 统计分析交易数据
+            total_addresses = len(top_holder_addresses)
+            analyzed_addresses = len(transaction_data)
+            
+            buy_trades_list = []
+            sell_trades_list = []
+            total_trades_list = []
+            low_frequency_traders = 0  # 低频交易者（7天内<=50次交易）
+            
+            for addr, tx_data in transaction_data.items():
+                buy_trades_list.append(tx_data.buy_trades)
+                sell_trades_list.append(tx_data.sell_trades)
+                total_trades_list.append(tx_data.total_trades)
+                
+                # 低频交易者：7天内交易次数<=50次
+                if tx_data.total_trades <= 50:
+                    low_frequency_traders += 1
+            
+            # 计算统计数据
+            if total_trades_list:
+                avg_total_trades = sum(total_trades_list) / len(total_trades_list)
+                avg_buy_trades = sum(buy_trades_list) / len(buy_trades_list)
+                avg_sell_trades = sum(sell_trades_list) / len(sell_trades_list)
+                
+                max_total_trades = max(total_trades_list)
+                max_buy_trades = max(buy_trades_list)
+                max_sell_trades = max(sell_trades_list)
+                
+                # 计算低频交易者比例
+                low_frequency_rate = (low_frequency_traders / analyzed_addresses) * 100 if analyzed_addresses > 0 else 0
+                
+                transaction_summary = {
+                    'period': '7日',
+                    'total_holders_analyzed': total_addresses,
+                    'transaction_data_obtained': analyzed_addresses,
+                    'low_frequency_traders': low_frequency_traders,
+                    'low_frequency_rate': low_frequency_rate,
+                    'avg_total_trades': avg_total_trades,
+                    'avg_buy_trades': avg_buy_trades,
+                    'avg_sell_trades': avg_sell_trades,
+                    'max_total_trades': max_total_trades,
+                    'max_buy_trades': max_buy_trades,
+                    'max_sell_trades': max_sell_trades,
+                    'total_buy_trades': sum(buy_trades_list),
+                    'total_sell_trades': sum(sell_trades_list),
+                    'total_all_trades': sum(total_trades_list)
+                }
+                
+                self.logger.info(f"✅ {token_symbol} 交易分析完成:")
+                self.logger.info(f"   📈 低频交易者: {low_frequency_traders}/{analyzed_addresses} ({low_frequency_rate:.1f}%)")
+                self.logger.info(f"   📊 平均交易次数: {avg_total_trades:.1f} (买入:{avg_buy_trades:.1f}, 卖出:{avg_sell_trades:.1f})")
+                self.logger.info(f"   🔥 最高交易次数: {max_total_trades} (买入:{max_buy_trades}, 卖出:{max_sell_trades})")
+                
+                return transaction_summary
+            else:
+                self.logger.warning(f"⚠️ {token_symbol} 没有有效的交易数据")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ 分析 {token_symbol} 交易数据时出错: {e}")
+            return None
 
 
 def main():

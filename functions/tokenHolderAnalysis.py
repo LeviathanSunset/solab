@@ -523,6 +523,17 @@ class TokenHolderAnalyzer:
             
             report_lines.append(f"{i:2d}. {display_name}{gmgn_url} ({holder_count}人) {value_str}")
         
+        # 🔥 新增: 显示交易数据分析结果
+        transaction_analysis = result.get('transaction_analysis')
+        if transaction_analysis:
+            report_lines.append("")
+            report_lines.append("───────────────────────────────────────")
+            report_lines.append("📈 Top Holders 7日交易分析:")
+            report_lines.append("───────────────────────────────────────")
+            report_lines.append(f"👥 分析地址: {transaction_analysis['transaction_data_obtained']}/{transaction_analysis['total_holders_analyzed']}")
+            report_lines.append(f"🔥 低频交易者: {transaction_analysis['low_frequency_traders']} ({transaction_analysis['low_frequency_rate']:.1f}%)")
+            report_lines.append(f"📊 平均交易次数: {transaction_analysis['avg_total_trades']:.1f}")
+        
         return "\n".join(report_lines)
     
     def _get_token_symbol(self, token_address: str) -> str:
