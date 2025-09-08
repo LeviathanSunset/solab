@@ -128,11 +128,8 @@ class RapeAnalysisManager:
                     name = token_info.get('name', '')
                     contract_address = token_info.get('contract_address', '')
                     
-                    # 构建带链接的标题格式: symbol (name) + 链接
-                    if name and name != symbol and not name.startswith("Unknown Token"):
-                        token_display = f"[{symbol} ({name})](https://gmgn.ai/sol/token/{contract_address})"
-                    else:
-                        token_display = f"[{symbol}](https://gmgn.ai/sol/token/{contract_address})"
+                    # 构建显示格式 - 只显示代币符号但保留链接
+                    token_display = f"[{symbol}](https://gmgn.ai/sol/token/{contract_address})"
                     
                     report = analyzer.holder_analyzer.generate_detective_report(
                         analysis_result, symbol, top_holdings_count=15, show_not_in_top20=False
