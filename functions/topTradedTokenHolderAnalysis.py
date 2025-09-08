@@ -237,7 +237,7 @@ class TopTradedTokenHolderAnalyzer:
     
     def _is_sol_token(self, token_addr: str, token_info_map: Dict[str, Any]) -> bool:
         """
-        智能识别是否为SOL代币
+        识别是否为SOL代币 - 只基于合约地址匹配
         
         Args:
             token_addr: 代币地址/键名
@@ -246,21 +246,8 @@ class TopTradedTokenHolderAnalyzer:
         Returns:
             是否为SOL代币
         """
-        # 检查是否为完整的SOL地址
-        if token_addr == "So11111111111111111111111111111111111111112":
-            return True
-        
-        # 检查token_info_map中的详细信息
-        token_info = token_info_map.get(token_addr, {})
-        if token_info:
-            symbol = token_info.get('symbol', '').upper()
-            name = token_info.get('name', '').upper()
-            
-            # 识别SOL的特征: symbol包含"SOL...SOL", name包含"UNKNOWN TOKEN (SOL"
-            if 'SOL...SOL' in symbol or 'UNKNOWN TOKEN (SOL' in name:
-                return True
-        
-        return False
+        # 只检查是否为完整的SOL地址
+        return token_addr == "So11111111111111111111111111111111111111112"
     
     def _output_token_report(self, analysis_result: Dict[str, Any], token) -> None:
         """输出单个代币的分析报告"""

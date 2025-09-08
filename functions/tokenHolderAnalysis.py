@@ -507,11 +507,12 @@ class TokenHolderAnalyzer:
             symbol = token_info.get('symbol', f"{token_addr[:6]}...")
             name = token_info.get('name', '')
             
-            # 构建显示名称 - 只显示代币符号但保留链接
-            display_name = f"[{symbol}](https://gmgn.ai/sol/token/{token_addr})"
-            
-            # 不再需要单独的 gmgn_url
-            gmgn_url = ""
+            # 特殊处理SOL代币 - 只基于合约地址匹配
+            if token_addr == "So11111111111111111111111111111111111111112":
+                display_name = "SOL"
+            else:
+                # 其他代币显示符号和链接
+                display_name = f"[{symbol}](https://gmgn.ai/sol/token/{token_addr})"
             
             # 格式化金额
             if total_token_value >= 1000000:
@@ -521,7 +522,7 @@ class TokenHolderAnalyzer:
             else:
                 value_str = f"${total_token_value:.0f}"
             
-            report_lines.append(f"{i:2d}. {display_name}{gmgn_url} ({holder_count}人) {value_str}")
+            report_lines.append(f"{i:2d}. {display_name} ({holder_count}人) {value_str}")
         
         # 🔥 新增: 显示交易数据分析结果
         transaction_analysis = result.get('transaction_analysis')

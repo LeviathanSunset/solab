@@ -128,8 +128,12 @@ class RapeAnalysisManager:
                     name = token_info.get('name', '')
                     contract_address = token_info.get('contract_address', '')
                     
-                    # 构建显示格式 - 只显示代币符号但保留链接
-                    token_display = f"[{symbol}](https://gmgn.ai/sol/token/{contract_address})"
+                    # 特殊处理SOL代币 - 只基于合约地址匹配
+                    if contract_address == "So11111111111111111111111111111111111111112":
+                        token_display = "SOL"
+                    else:
+                        # 其他代币显示符号和链接
+                        token_display = f"[{symbol}](https://gmgn.ai/sol/token/{contract_address})"
                     
                     report = analyzer.holder_analyzer.generate_detective_report(
                         analysis_result, symbol, top_holdings_count=15, show_not_in_top20=False
