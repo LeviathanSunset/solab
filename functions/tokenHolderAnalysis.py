@@ -303,7 +303,7 @@ class TokenHolderAnalyzer:
         
         return {
             "total_common_tokens": len(common_tokens),
-            "top_common_tokens": dict(sorted_tokens[:20]),  # 前20个
+            "top_common_tokens": dict(sorted_tokens),
             "token_info_map": token_info_map,  # 只包含符合条件的代币信息
             "summary": {
                 "most_held_token": sorted_tokens[0] if sorted_tokens else None,

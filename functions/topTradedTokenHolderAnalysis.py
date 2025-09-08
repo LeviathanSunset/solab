@@ -332,7 +332,7 @@ class TopTradedTokenHolderAnalyzer:
             
             # 提取前20个持有者地址进行交易分析
             top_holder_addresses = []
-            for holder in detailed_holders[:20]:  # 限制分析前20个大户
+            for holder in detailed_holders:  # 限制分析前20个大户
                 if holder.get('address'):
                     top_holder_addresses.append(holder['address'])
             
