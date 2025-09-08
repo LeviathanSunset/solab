@@ -190,16 +190,6 @@ class SoLabBot:
             self.topic_id
         )
         
-        # 错误处理 - 只处理针对本bot的未知命令
-        @self.bot.message_handler(func=lambda message: self._is_command_for_this_bot(message))
-        def handle_unknown_command(message):
-            """处理未知命令"""
-            command = message.text.split()[0]
-            self.bot.reply_to(
-                message, 
-                f"❓ 未知命令 {command}。使用 /help 查看可用命令"
-            )
-    
     def start_polling(self):
         """开始轮询"""
         print("🚀 Bot开始运行...")
