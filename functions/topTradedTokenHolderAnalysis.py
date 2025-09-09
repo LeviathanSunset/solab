@@ -265,7 +265,16 @@ class TopTradedTokenHolderAnalyzer:
             "So11111111111111111111111111111111111111112",  # 标准SOL地址
             "So11111111111111111111111111111111111111111"   # 另一种SOL地址格式
         }
-        return token_addr in sol_addresses
+        
+        # 检查完整地址
+        if token_addr in sol_addresses:
+            return True
+            
+        # 检查是否为SOL的简化格式（如"SOL...SOL", "SOL"等）
+        if token_addr.upper().startswith("SOL"):
+            return True
+            
+        return False
     
     def _output_token_report(self, analysis_result: Dict[str, Any], token) -> None:
         """输出单个代币的分析报告"""
