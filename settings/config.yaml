@@ -37,7 +37,7 @@ crawlers:
         minVolume: 15000
         maxVolume: 100000
         minMcap: 10000
-        maxMcap: 600000
+        maxMcap: 60000
         hasSocials: true
         minTokenAge: 2840
 
