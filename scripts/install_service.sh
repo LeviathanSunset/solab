@@ -5,7 +5,7 @@ echo "SoLab Telegram Bot 自动启动脚本安装程序"
 echo "=========================================="
 
 # 检查是否以root权限运行
-if [ "$EUID" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
     echo "❌ 请使用sudo运行此脚本"
     exit 1
 fi
@@ -13,12 +13,14 @@ fi
 # 设置变量
 SERVICE_NAME="solab-bot"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-echo "📁 当前目录: $CURRENT_DIR"
+echo "📁 脚本目录: $SCRIPT_DIR"
+echo "📁 项目目录: $PROJECT_DIR"
 
 # 检查主文件是否存在
-if [ ! -f "$CURRENT_DIR/main.py" ]; then
+if [ ! -f "$PROJECT_DIR/main.py" ]; then
     echo "❌ 找不到main.py文件"
     exit 1
 fi
@@ -27,7 +29,7 @@ echo "✅ 找到main.py文件"
 
 # 复制服务文件到系统目录
 echo "📋 复制服务文件到 $SERVICE_FILE"
-cp "$CURRENT_DIR/solab-bot.service" "$SERVICE_FILE"
+cp "$PROJECT_DIR/solab-bot.service" "$SERVICE_FILE"
 
 if [ $? -ne 0 ]; then
     echo "❌ 复制服务文件失败"

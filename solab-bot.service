@@ -6,9 +6,9 @@ Wants=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/root/telegram-bot/solab
-Environment=PYTHONPATH=/home/root/telegram-bot/solab
-ExecStart=/usr/bin/python3 /home/root/telegram-bot/solab/main.py
+WorkingDirectory=/root/projects/solab
+Environment=PYTHONPATH=/root/projects/solab
+ExecStart=/root/projects/solab/venv/bin/python /root/projects/solab/main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
