@@ -34,7 +34,7 @@ crawlers:
         mintAuthorityDisabled: true
         freezeAuthorityDisabled: true
         minLiquidity: 3000
-        minVolume: 15000
+        minVolume: 5000
         maxVolume: 100000
         minMcap: 10000
         maxMcap: 60000

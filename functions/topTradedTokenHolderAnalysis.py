@@ -54,7 +54,8 @@ class TopTradedTokenHolderAnalyzer:
         
         # 主流稳定币和SOL地址，筛选时排除
         self.excluded_tokens = {
-            "So11111111111111111111111111111111111111112",  # SOL 完整地址
+            "So11111111111111111111111111111111111111112",  # SOL 标准地址
+            "So11111111111111111111111111111111111111111",   # SOL 另一种格式
             "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
             "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
         }
@@ -238,13 +239,19 @@ class TopTradedTokenHolderAnalyzer:
             if holder_count >= self.min_holders and total_value >= self.min_total_value:
                 self.logger.info(f"📊 符合条件的代币: {token_info.get('symbol', 'Unknown')} ({holder_count}人持有, ${total_value:,.0f})")
                 return True
+            else:
+                # 添加调试信息，显示不符合条件的原因
+                if holder_count < self.min_holders:
+                    self.logger.debug(f"❌ {token_info.get('symbol', 'Unknown')}: 持有人数不足 ({holder_count} < {self.min_holders})")
+                if total_value < self.min_total_value:
+                    self.logger.debug(f"❌ {token_info.get('symbol', 'Unknown')}: 总价值不足 (${total_value:,.0f} < ${self.min_total_value:,.0f})")
         
         self.logger.debug(f"无符合条件的共同持仓 (需要: >={self.min_holders}人持有 且 >=${self.min_total_value:,}, 排除主流币)")
         return False
     
     def _is_sol_token(self, token_addr: str, token_info_map: Dict[str, Any]) -> bool:
         """
-        识别是否为SOL代币 - 只基于合约地址匹配
+        识别是否为SOL代币 - 基于特定的SOL地址匹配
         
         Args:
             token_addr: 代币地址/键名
@@ -253,8 +260,12 @@ class TopTradedTokenHolderAnalyzer:
         Returns:
             是否为SOL代币
         """
-        # 只检查是否为完整的SOL地址
-        return token_addr == "So11111111111111111111111111111111111111112"
+        # 检查是否为SOL的两种地址格式
+        sol_addresses = {
+            "So11111111111111111111111111111111111111112",  # 标准SOL地址
+            "So11111111111111111111111111111111111111111"   # 另一种SOL地址格式
+        }
+        return token_addr in sol_addresses
     
     def _output_token_report(self, analysis_result: Dict[str, Any], token) -> None:
         """输出单个代币的分析报告"""
