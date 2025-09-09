@@ -35,6 +35,7 @@ class RapeAnalysisManager:
         self.current_cycle = 0
         self.current_token_index = 0
         self.total_tokens = 0
+        self.total_jupiter_tokens = 0  # Jupiter爬取到的总代币数
         self.qualified_count = 0
         self.analysis_thread = None
         self.config_manager = ConfigManager()
@@ -63,6 +64,8 @@ class RapeAnalysisManager:
         self.current_preset = preset_name
         self.current_cycle = 1
         self.current_token_index = 0
+        self.total_tokens = 0
+        self.total_jupiter_tokens = 0
         self.qualified_count = 0
         
         # 启动分析线程
@@ -95,8 +98,9 @@ class RapeAnalysisManager:
 🟢 分析运行中
 📊 预设: {self.current_preset}
 🔄 周期: {self.current_cycle}
-📈 进度: {progress_str}
-✅ 已找到符合条件代币: {self.qualified_count}个
+📈 分析进度: {progress_str}
+🎯 Jupiter爬取: {self.total_jupiter_tokens}个代币
+✅ 符合条件: {self.qualified_count}个代币
         """
         return status.strip()
     
@@ -143,15 +147,23 @@ class RapeAnalysisManager:
                     self._send_to_group(f"🎯 发现符合条件的代币: {token_display}\n\n{report}")
                 
                 # 分析热门代币 - 传入即时回调
+                def update_progress(current, total):
+                    self.current_token_index = current
+                    self.total_tokens = total
+                
+                def update_jupiter_count(jupiter_total):
+                    """更新Jupiter爬取到的代币总数"""
+                    self.total_jupiter_tokens = jupiter_total
+                
                 qualified_results = analyzer.analyze_top_traded_tokens(
                     preset_name=self.current_preset,
                     max_tokens=1000,  # 增加到1000个代币
                     delay_between_tokens=3.0,
-                    progress_callback=lambda current, total: setattr(self, 'current_token_index', current),
-                    qualified_callback=instant_send_callback  # 🚀 添加即时发送回调
+                    progress_callback=update_progress,
+                    qualified_callback=instant_send_callback,  # 🚀 添加即时发送回调
+                    jupiter_callback=update_jupiter_count  # 新增：Jupiter数据回调
                 )
                 
-                self.total_tokens = 50  # 实际分析的代币数量
                 self.logger.info(f"📊 第 {self.current_cycle + 1} 轮分析完成，发现 {len(qualified_results)} 个符合条件的代币")
                 
                 # 注意：符合条件的代币已经通过回调即时发送到群组了，无需再次发送
@@ -165,8 +177,10 @@ class RapeAnalysisManager:
 🔄 第 {self.current_cycle} 轮分析完成
 
 📊 预设: {self.current_preset}
-🎯 本轮发现: {len(qualified_results)} 个符合条件代币
-📈 累计发现: {self.qualified_count} 个代币
+🎯 Jupiter爬取: {self.total_jupiter_tokens} 个代币
+📈 实际分析: {self.total_tokens} 个代币
+✅ 本轮发现: {len(qualified_results)} 个符合条件代币
+� 累计符合条件: {self.qualified_count} 个代币
 ⏰ 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 🔄 准备开始下一轮分析...

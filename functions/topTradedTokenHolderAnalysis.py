@@ -69,7 +69,8 @@ class TopTradedTokenHolderAnalyzer:
                                 max_tokens: int = 20,
                                 delay_between_tokens: float = 2.0,
                                 progress_callback=None,
-                                qualified_callback=None) -> List[Dict[str, Any]]:
+                                qualified_callback=None,
+                                jupiter_callback=None) -> List[Dict[str, Any]]:
         """
         分析热门交易代币的持有者
         
@@ -79,6 +80,7 @@ class TopTradedTokenHolderAnalyzer:
             delay_between_tokens: 代币分析间隔时间(秒)
             progress_callback: 进度回调函数
             qualified_callback: 发现符合条件代币时的回调函数
+            jupiter_callback: Jupiter数据回调函数(接收爬取到的总代币数)
             
         Returns:
             符合条件的分析结果列表
@@ -94,6 +96,11 @@ class TopTradedTokenHolderAnalyzer:
             self.logger.info("🔄 正在获取热门交易代币...")
             tokens = self.jupiter_crawler.crawl_with_preset(preset_name)
             self.logger.log_success("获取热门交易代币", f"获取到 {len(tokens)} 个代币")
+            
+            # 🚀 通过回调发送Jupiter爬取的总数
+            if jupiter_callback:
+                jupiter_callback(len(tokens))
+                
         except Exception as e:
             self.logger.log_error("获取热门交易代币", str(e))
             return []

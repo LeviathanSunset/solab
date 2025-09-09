@@ -34,10 +34,12 @@ crawlers:
         mintAuthorityDisabled: true
         freezeAuthorityDisabled: true
         minLiquidity: 3000
-        minVolume: 6000
-        maxMcap: 75000
+        minVolume: 15000
+        maxVolume: 100000
+        minMcap: 10000
+        maxMcap: 600000
         hasSocials: true
-        minTokenAge: 1440
+        minTokenAge: 2840
 
 
 
