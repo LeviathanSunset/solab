@@ -36,10 +36,23 @@ crawlers:
         minLiquidity: 3000
         minVolume: 3000
         maxVolume: 100000
-        minMcap: 10000
+        minMcap: 30000
         maxMcap: 60000
         hasSocials: true
-        minTokenAge: 2840
+        minTokenAge: 1420 # 单位是分钟
+      
+      # 最低市值潜力代币预设 - 24小时
+      lowestCapGem_24h:
+        timeFrame: "24h"
+        mintAuthorityDisabled: true
+        freezeAuthorityDisabled: true
+        minLiquidity: 3000
+        minVolume: 750
+        maxVolume: 100000
+        minMcap: 9000
+        maxMcap: 30000
+        hasSocials: true
+        minTokenAge: 2840 # 单位是分钟
 
 
 

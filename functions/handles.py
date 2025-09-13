@@ -53,7 +53,7 @@ class RapeAnalysisManager:
             return presets
         except Exception as e:
             print(f"获取预设失败: {e}")
-            return ['lowCapGem_24h', 'trending_24h', 'lowCapSusVol_5m']
+            return ['lowCapGem_24h', 'trending_24h', 'lowCapSusVol_5m', 'lowestCapGem_24h']
     
     def start_analysis(self, preset_name: str, user_id: int):
         """开始持续分析"""
