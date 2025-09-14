@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-热门交易代币持有者分析模块
+        # 初始化日志器
+        self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
+        
+        # 筛选条件 - 将从配置中动态加载
+        self.min_holders = 7  # 默认值，将被配置覆盖
+        self.min_total_value = 300000  # 默认值，将被配置覆盖交易代币持有者分析模块
 Top Traded Token Holder Analysis Module
 
 输入: 使用Jupiter预设配置爬取热门交易代币
@@ -48,9 +52,16 @@ class TopTradedTokenHolderAnalyzer:
         # 初始化日志器
         self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
         
-        # 更严格的筛选条件
-        self.min_holders = 7  # 至少5个地址持有
-        self.min_total_value = 300000  # 总价值超过30万美元
+        # 筛选条件将从配置文件中动态加载
+        self.min_holders = None  # 将在分析时从配置加载
+        self.min_total_value = None  # 将在分析时从配置加载
+        
+                # 初始化日志器
+        self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
+        
+        # 筛选条件将从配置中动态加载
+        self.min_holders = None
+        self.min_total_value = None
         
         # 主流稳定币和SOL地址，筛选时排除
         self.excluded_tokens = {
@@ -65,6 +76,26 @@ class TopTradedTokenHolderAnalyzer:
         """设置OKX认证信息"""
         self.holder_analyzer.set_auth(cookie, fp_token, verify_sign, 
                                     verify_token, dev_id, site_info)
+    
+    def _load_filter_conditions(self, preset_name: str):
+        """从配置文件中加载筛选条件"""
+        try:
+            # 获取Jupiter预设配置
+            jupiter_config = self.config.get_config().get('crawlers', {}).get('jupiter', {})
+            toptraded_config = jupiter_config.get('toptraded', {})
+            preset_config = toptraded_config.get(preset_name, {})
+            
+            # 加载筛选条件，如果配置中没有则使用默认值
+            self.min_holders = preset_config.get('min_holders', 7)
+            self.min_total_value = preset_config.get('min_total_value', 300000)
+            
+            self.logger.info(f"✅ 已加载预设 '{preset_name}' 的筛选条件: {self.min_holders}人持有, ${self.min_total_value:,}")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 无法加载预设 '{preset_name}' 的筛选条件，使用默认值: {e}")
+            # 使用默认值
+            self.min_holders = 7
+            self.min_total_value = 300000
     
     def analyze_top_traded_tokens(self, preset_name: str = 'lowCapGem_24h',
                                 max_tokens: int = 20,
@@ -89,6 +120,9 @@ class TopTradedTokenHolderAnalyzer:
         # 记录任务开始
         task_desc = f"热门交易代币持有者分析 - 预设:{preset_name}, 性能模式:{self.performance_mode}"
         self.logger.log_start(task_desc)
+        
+        # 从配置中加载筛选条件
+        self._load_filter_conditions(preset_name)
         
         self.logger.info(f"📋 筛选条件: 至少{self.min_holders}个地址持有, 总价值>${self.min_total_value:,}(排除SOL, USDC, USDT等主流币)")
         

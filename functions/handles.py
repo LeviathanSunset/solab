@@ -44,16 +44,57 @@ class RapeAnalysisManager:
         self.logger = get_logger("TelegramBot.AnalysisManager")
         
     def get_available_presets(self) -> List[str]:
-        """获取可用的Jupiter预设"""
+        """获取可用的预设列表"""
         try:
-            with open('settings/config.yaml', 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-            
-            presets = list(config['crawlers']['jupiter']['toptraded'].keys())
-            return presets
+            config = ConfigManager()
+            presets = config.get_jupiter_presets()
+            return list(presets.keys())
         except Exception as e:
-            print(f"获取预设失败: {e}")
-            return ['lowCapGem_24h', 'trending_24h', 'lowCapSusVol_5m', 'lowestCapGem_24h']
+            self.logger.error(f"获取预设列表失败: {e}")
+            return []
+    
+    def get_preset_info(self, preset_name: str) -> Optional[Dict[str, Any]]:
+        """获取预设的详细信息
+        
+        Args:
+            preset_name: 预设名称
+            
+        Returns:
+            预设信息字典，包含筛选条件等
+        """
+        try:
+            config = ConfigManager()
+            presets = config.get_jupiter_presets()
+            preset_config = presets.get(preset_name)
+            
+            if preset_config:
+                return {
+                    'min_holders': preset_config.get('min_holders', 7),
+                    'min_total_value': preset_config.get('min_total_value', 300000),
+                    'timeFrame': preset_config.get('timeFrame', '24h'),
+                    'minMcap': preset_config.get('minMcap', 0),
+                    'maxMcap': preset_config.get('maxMcap', 0)
+                }
+            return None
+        except Exception as e:
+            self.logger.error(f"获取预设 {preset_name} 信息失败: {e}")
+            return None
+    
+    def get_preset_display_info(self, preset_name: str) -> str:
+        """获取预设的显示信息
+        
+        Args:
+            preset_name: 预设名称
+            
+        Returns:
+            格式化的显示文本
+        """
+        preset_info = self.get_preset_info(preset_name)
+        if preset_info:
+            holders = preset_info['min_holders']
+            value_k = preset_info['min_total_value'] // 1000
+            return f"{preset_name} (≥{holders}人, ≥${value_k}K)"
+        return preset_name
     
     def start_analysis(self, preset_name: str, user_id: int):
         """开始持续分析"""
@@ -289,8 +330,9 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
                 markup = types.InlineKeyboardMarkup(row_width=1)
                 for preset in presets:
                     callback_data = f"start_analysis:{preset}"
+                    display_text = analysis_manager.get_preset_display_info(preset)
                     markup.add(types.InlineKeyboardButton(
-                        text=f"📊 {preset}",
+                        text=f"📊 {display_text}",
                         callback_data=callback_data
                     ))
                 
@@ -319,6 +361,12 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
         """处理预设选择"""
         preset_name = call.data.split(':')[1]
         
+        # 获取预设的筛选条件
+        preset_info = analysis_manager.get_preset_info(preset_name)
+        filter_info = ""
+        if preset_info:
+            filter_info = f"\n📋 筛选条件: ≥{preset_info['min_holders']}人持有, ≥${preset_info['min_total_value']:,}"
+        
         success, msg = analysis_manager.start_analysis(preset_name, call.from_user.id)
         
         if success:
@@ -326,7 +374,7 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
-                text=f"🚀 {msg}\n\n🔄 正在启动分析循环...\n📊 符合条件的代币将自动推送到群组"
+                text=f"🚀 {msg}{filter_info}\n\n🔄 正在启动分析循环...\n📊 符合条件的代币将自动推送到群组"
             )
         else:
             bot.answer_callback_query(call.id, f"❌ {msg}")

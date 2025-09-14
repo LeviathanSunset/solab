@@ -98,6 +98,17 @@ class ConfigManager:
         crawler_configs = performance_configs.get(crawler_name, {})
         return list(crawler_configs.keys())
 
+    def get_jupiter_presets(self) -> Dict[str, Any]:
+        """获取所有Jupiter预设配置
+        
+        Returns:
+            Jupiter预设配置字典
+        """
+        if not self._config:
+            self.load_config()
+        
+        return self._config.get('crawlers', {}).get('jupiter', {}).get('toptraded', {})
+
     def build_jupiter_api_params(self, preset_name: str) -> Optional[Dict[str, Any]]:
         """构建Jupiter API请求参数
         
