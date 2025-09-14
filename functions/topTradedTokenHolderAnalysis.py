@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-        # 初始化日志器
-        self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
-        
-        # 筛选条件 - 将从配置中动态加载
-        self.min_holders = 7  # 默认值，将被配置覆盖
-        self.min_total_value = 300000  # 默认值，将被配置覆盖交易代币持有者分析模块
+"""
+热门交易代币持有者分析模块
 Top Traded Token Holder Analysis Module
 
 输入: 使用Jupiter预设配置爬取热门交易代币
@@ -56,13 +52,6 @@ class TopTradedTokenHolderAnalyzer:
         self.min_holders = None  # 将在分析时从配置加载
         self.min_total_value = None  # 将在分析时从配置加载
         
-                # 初始化日志器
-        self.logger = CrawlerLogger("TopTradedTokenAnalyzer")
-        
-        # 筛选条件将从配置中动态加载
-        self.min_holders = None
-        self.min_total_value = None
-        
         # 主流稳定币和SOL地址，筛选时排除
         self.excluded_tokens = {
             "So11111111111111111111111111111111111111112",  # SOL 标准地址
@@ -81,9 +70,8 @@ class TopTradedTokenHolderAnalyzer:
         """从配置文件中加载筛选条件"""
         try:
             # 获取Jupiter预设配置
-            jupiter_config = self.config.get_config().get('crawlers', {}).get('jupiter', {})
-            toptraded_config = jupiter_config.get('toptraded', {})
-            preset_config = toptraded_config.get(preset_name, {})
+            jupiter_presets = self.config.get_jupiter_presets()
+            preset_config = jupiter_presets.get(preset_name, {})
             
             # 加载筛选条件，如果配置中没有则使用默认值
             self.min_holders = preset_config.get('min_holders', 7)
