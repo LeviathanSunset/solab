@@ -45,7 +45,7 @@ crawlers:
         minMcap: 30000
         maxMcap: 60000
         hasSocials: true
-        minTokenAge: 1420 # 单位是分钟
+        minTokenAge: 600 # 单位是分钟
         # 持有者分析筛选条件
         min_holders: 8  # 至少7个地址持有同一代币
         min_total_value: 30000  # 总价值超过30万美元
