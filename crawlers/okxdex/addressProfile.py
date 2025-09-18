@@ -1,6 +1,20 @@
 """
-OKX地址基本信息爬虫
-获取钱包地址的基本资料和PnL信息
+OKX地址基本信息爬虫模块
+====================
+
+功能说明:
+- 爬取OKX DEX平台上钱包地址的详细交易分析数据
+- 获取包括盈亏、交易统计、持仓信息等综合数据
+- 支持批量获取和数据导出功能
+
+主要数据类型:
+- AddressProfile: 钱包地址完整资料模型
+- DailyPnl: 每日盈亏数据
+- TopToken: 表现最佳代币信息
+
+Author: SoLab Team
+Created: 2024
+Last Modified: 2025-09-18
 """
 import requests
 import json
@@ -12,12 +26,28 @@ from datetime import datetime
 
 @dataclass
 class DailyPnl:
-    """日盈亏数据"""
+    """
+    每日盈亏数据模型
+    =============
+    
+    存储特定日期的盈亏信息，用于分析钱包的日常交易表现
+    
+    属性说明:
+    - profit: 当日盈亏金额(字符串格式，保持精度)
+    - timestamp: Unix时间戳(毫秒)
+    - date: 自动转换的datetime对象，便于处理
+    
+    使用场景:
+    - 绘制盈亏趋势图
+    - 分析交易频率和表现
+    - 计算连续盈利/亏损天数
+    """
     profit: str
     timestamp: int
     date: Optional[datetime] = None
     
     def __post_init__(self):
+        """初始化后处理：将时间戳转换为可读的datetime对象"""
         if self.timestamp:
             self.date = datetime.fromtimestamp(self.timestamp / 1000)
 
