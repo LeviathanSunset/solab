@@ -270,6 +270,43 @@ class RapeAnalysisManager:
             error_msg = f"发送消息到群组失败: {e}"
             self.logger.error(error_msg)
 
+    def _send_to_group_html(self, message: str, keyboard: List[List[Dict[str, str]]] = None):
+        """发送HTML格式消息到群组，支持内联键盘"""
+        try:
+            # 创建内联键盘
+            markup = None
+            if keyboard:
+                from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+                markup = InlineKeyboardMarkup()
+                for row in keyboard:
+                    buttons = [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
+                    markup.add(*buttons)
+
+            if self.topic_id:
+                # 发送到指定话题
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=message,
+                    message_thread_id=int(self.topic_id),
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
+                self.logger.debug(f"📤 HTML消息已发送到话题 {self.topic_id}")
+            else:
+                # 发送到群组
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=message,
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
+                self.logger.debug("📤 HTML消息已发送到群组")
+        except Exception as e:
+            error_msg = f"发送HTML消息到群组失败: {e}"
+            self.logger.error(error_msg)
+
 
 class GakeAnalysisManager:
     """Gake分析管理器"""
@@ -293,11 +330,19 @@ class GakeAnalysisManager:
         def gake_alert_callback(alert):
             """Gake警报回调函数"""
             try:
-                # 格式化警报消息
-                message = alert.format_message()
+                # 获取代币symbols
+                token_symbols = {}
+                if alert.common_tokens:
+                    token_symbols = self.gake_monitor._get_token_symbols(alert.common_tokens)
 
-                # 发送到群组
-                self._send_to_group(f"🚨 **GAKE 警报** 🚨\n\n{message}")
+                # 格式化警报消息
+                message = alert.format_message(token_symbols)
+
+                # 获取内联键盘
+                keyboard = alert.get_inline_keyboard(token_symbols)
+
+                # 发送到群组 - 使用HTML格式
+                self._send_to_group_html(message, keyboard)
 
             except Exception as e:
                 self.logger.error(f"❌ 发送Gake警报失败: {str(e)}")
@@ -376,6 +421,43 @@ class GakeAnalysisManager:
                 self.logger.debug("📤 Gake消息已发送到群组")
         except Exception as e:
             error_msg = f"发送Gake消息到群组失败: {e}"
+            self.logger.error(error_msg)
+
+    def _send_to_group_html(self, message: str, keyboard: List[List[Dict[str, str]]] = None):
+        """发送HTML格式消息到群组，支持内联键盘"""
+        try:
+            # 创建内联键盘
+            markup = None
+            if keyboard:
+                from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+                markup = InlineKeyboardMarkup()
+                for row in keyboard:
+                    buttons = [InlineKeyboardButton(btn["text"], callback_data=btn["callback_data"]) for btn in row]
+                    markup.add(*buttons)
+
+            if self.topic_id:
+                # 发送到指定话题
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=message,
+                    message_thread_id=int(self.topic_id),
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
+                self.logger.debug(f"📤 Gake HTML消息已发送到话题 {self.topic_id}")
+            else:
+                # 发送到群组
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=message,
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=markup
+                )
+                self.logger.debug("📤 Gake HTML消息已发送到群组")
+        except Exception as e:
+            error_msg = f"发送Gake HTML消息到群组失败: {e}"
             self.logger.error(error_msg)
 
 
@@ -489,6 +571,174 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
         else:
             bot.answer_callback_query(call.id, f"❌ {msg}")
 
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('token_details_'))
+    def handle_token_details(call):
+        """处理查看交易地址按钮点击 - 显示目标代币交易者中也交易过该共同代币的地址"""
+        try:
+            # 解析callback_data: token_details_{共同代币地址}_{目标代币地址}
+            data_parts = call.data.replace('token_details_', '').split('_')
+            if len(data_parts) >= 2:
+                common_token_address = '_'.join(data_parts[:-1])  # 共同代币地址可能包含下划线
+                target_token_address = data_parts[-1]
+            else:
+                # 兼容旧格式
+                common_token_address = call.data.replace('token_details_', '')
+                target_token_address = None
+
+            # 获取共同代币信息
+            from crawlers.jupiter.multiTokenProfiles import JupiterTokenCrawler
+            jupiter_crawler = JupiterTokenCrawler()
+            tokens = jupiter_crawler.get_token_info([common_token_address])
+
+            if tokens:
+                common_token = tokens[0]
+                token_url = f"https://gmgn.ai/sol/token/{common_token_address}"
+
+                if target_token_address:
+                    # 获取目标代币的交易地址
+                    target_addresses = gake_manager.gake_monitor.okx_crawler.get_token_trading_addresses(
+                        target_token_address, limit=100
+                    )
+
+                    if target_addresses:
+                        # 在目标代币交易者中，找出也交易过共同代币的地址
+                        intersection_addresses = []
+                        for addr in target_addresses:
+                            try:
+                                # 获取该地址的代币列表
+                                token_contracts = gake_manager.gake_monitor.address_crawler.get_address_token_contracts(addr, limit=100)
+                                if token_contracts and common_token_address in token_contracts:
+                                    intersection_addresses.append(addr)
+                            except:
+                                continue
+
+                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 相关地址
+
+🔄 地址归类结果:
+📊 目标代币交易者: {len(target_addresses)}个
+🎯 其中也交易过该代币: {len(intersection_addresses)}个
+"""
+
+                        if intersection_addresses:
+                            detail_message += "\n📋 同时交易两个代币的地址:\n"
+                            # 显示前20个交集地址
+                            for i, addr in enumerate(intersection_addresses[:20]):
+                                detail_message += f"{i+1:2d}. <code>{addr}</code>\n"
+
+                            if len(intersection_addresses) > 20:
+                                detail_message += f"\n... 还有 {len(intersection_addresses) - 20} 个地址"
+                        else:
+                            detail_message += "\n❌ 目标代币交易者中没有找到交易过该代币的地址"
+
+                        detail_message += f"\n\n🔗 查看代币详情请点击上方链接"
+                    else:
+                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 相关地址
+
+❌ 无法获取交易地址数据进行交集分析
+
+🔗 查看代币详情请点击上方链接"""
+                else:
+                    # 兼容旧格式，显示该代币的交易地址
+                    trading_addresses = gake_manager.gake_monitor.okx_crawler.get_token_trading_addresses(
+                        common_token_address, limit=100
+                    )
+
+                    if trading_addresses:
+                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 交易地址
+
+📊 交易过该代币的地址 ({len(trading_addresses)}个):
+"""
+                        for i, addr in enumerate(trading_addresses[:20]):
+                            detail_message += f"{i+1:2d}. <code>{addr}</code>\n"
+
+                        if len(trading_addresses) > 20:
+                            detail_message += f"\n... 还有 {len(trading_addresses) - 20} 个地址"
+
+                        detail_message += f"\n\n🔗 查看代币详情请点击上方链接"
+                    else:
+                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 交易地址
+
+❌ 无法获取该代币的交易地址
+
+🔗 查看代币详情请点击上方链接"""
+
+                # 创建返回按钮
+                from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+                return_markup = InlineKeyboardMarkup()
+                return_markup.add(InlineKeyboardButton(
+                    "↩️ 返回GAKE警报",
+                    callback_data=f"back_to_gake_{call.message.message_id}"
+                ))
+
+                bot.answer_callback_query(call.id, f"📊 {token.symbol} 交易地址")
+                bot.send_message(
+                    chat_id=call.message.chat.id,
+                    text=detail_message,
+                    parse_mode='HTML',
+                    disable_web_page_preview=True,
+                    reply_markup=return_markup,
+                    message_thread_id=call.message.message_thread_id
+                )
+            else:
+                bot.answer_callback_query(call.id, "❌ 无法获取代币信息")
+
+        except Exception as e:
+            bot.answer_callback_query(call.id, "❌ 处理失败")
+            print(f"❌ 处理代币详情按钮失败: {e}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('low_freq_traders_'))
+    def handle_low_freq_traders(call):
+        """处理查看低频交易者按钮点击"""
+        try:
+            # 提取代币地址
+            token_address = call.data.replace('low_freq_traders_', '')
+
+            # 这里可以实现查看低频交易者的详细信息
+            # 目前先返回一个简单的消息
+            detail_message = f"""🔍 低频交易者详情
+
+📊 正在分析代币的低频交易者...
+🔗 代币地址: <code>{token_address}</code>
+
+⚠️ 此功能正在开发中"""
+
+            # 创建返回按钮
+            from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+            return_markup = InlineKeyboardMarkup()
+            return_markup.add(InlineKeyboardButton(
+                "↩️ 返回GAKE警报",
+                callback_data=f"back_to_gake_{call.message.message_id}"
+            ))
+
+            bot.answer_callback_query(call.id, "🔍 查看低频交易者")
+            bot.send_message(
+                chat_id=call.message.chat.id,
+                text=detail_message,
+                parse_mode='HTML',
+                reply_markup=return_markup,
+                message_thread_id=call.message.message_thread_id
+            )
+
+        except Exception as e:
+            bot.answer_callback_query(call.id, "❌ 处理失败")
+            print(f"❌ 处理低频交易者按钮失败: {e}")
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('back_to_gake_'))
+    def handle_back_to_gake(call):
+        """处理返回GAKE警报按钮点击"""
+        try:
+            # 提取原始消息ID
+            original_message_id = call.data.replace('back_to_gake_', '')
+
+            # 删除当前详情消息
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+
+            bot.answer_callback_query(call.id, "↩️ 已返回")
+
+        except Exception as e:
+            bot.answer_callback_query(call.id, "❌ 返回失败")
+            print(f"❌ 处理返回按钮失败: {e}")
+
     @bot.message_handler(commands=['gake'])
     def gake_command(message):
         """处理 /gake 命令"""
@@ -523,8 +773,9 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
 • 市值范围: $10,000 - $30,000
 • 最小成交量: $1,000 (1小时)
 • 最小年龄: 720 分钟 (12小时)
-• 涨幅阈值: 20%
+• 涨幅阈值: 3%
 • 监控间隔: 30秒
+• 分析交易地址: 100条记录 (~35个唯一地址)
 
 🔍 **分析内容:**
 • 监控符合条件的代币价格变动
@@ -533,7 +784,7 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
 • 识别cabal代币关联
 
 ⚠️ **触发条件:**
-• 代币价格30秒内上涨超过20%
+• 代币价格30秒内上涨超过3%
 • 至少2个可疑地址参与交易
 • 可疑地址定义: 7天或30天交易次数<50
 

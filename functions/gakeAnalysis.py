@@ -19,9 +19,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from crawlers.jupiter.topTradedTokens import JupiterTopTradedCrawler
+from crawlers.jupiter.multiTokenProfiles import JupiterTokenCrawler
 from crawlers.okxdex.tokenTradingHistory import OKXTokenTradingHistoryCrawler
 from functions.addressAnalysis import AddressAnalyzer
 from functions.logger import get_logger
+from settings.config_manager import ConfigManager
+
+# 创建全局配置管理器实例
+_config_manager = ConfigManager()
+
+def get_cabal_tokens():
+    return _config_manager.get_cabal_tokens()
+
+def get_suspicious_criteria():
+    return _config_manager.get_suspicious_criteria()
 
 
 @dataclass
@@ -71,48 +82,105 @@ class GakeAlert:
     common_tokens: List[str]
     cabal_tokens: List[str]
     analysis_time: datetime
+    # 新增字段：代币交易地址统计
+    token_address_count: Dict[str, int]  # {代币地址: 交易该代币的地址数量}
+    address_profiles: Dict[str, AddressProfile]  # {地址: 地址档案}
 
-    def format_message(self) -> str:
-        """格式化为Telegram消息"""
-        price_percent = f"{self.price_increase:.2f}%"
+    def get_inline_keyboard(self, token_symbols: Dict[str, str] = None) -> List[List[Dict[str, str]]]:
+        """生成Telegram内联键盘按钮
 
+        Args:
+            token_symbols: 代币地址到symbol的映射
+        """
+        if len(self.suspicious_addresses) < 3 or not self.common_tokens:
+            return []
+
+        keyboard = []
+
+        # 为前4个代币创建按钮
+        for i, token_addr in enumerate(self.common_tokens[:4]):
+            # 获取代币symbol
+            if token_symbols and token_addr in token_symbols:
+                token_symbol = token_symbols[token_addr]
+            else:
+                # 后备方案
+                if token_addr == 'So11111111111111111111111111111111111111112':
+                    token_symbol = 'SOL'
+                elif token_addr == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                    token_symbol = 'USDC'
+                else:
+                    token_symbol = token_addr[:8] + '...'
+
+            button_text = f"🪙 {token_symbol}"
+            # 格式: token_details_{共同代币地址}_{目标代币地址}
+            callback_data = f"token_details_{token_addr}_{self.token.contract_address}"
+            keyboard.append([{
+                "text": button_text,
+                "callback_data": callback_data
+            }])
+
+        # 添加查看所有低频交易者按钮
+        keyboard.append([{
+            "text": "🔍 查看所有低频交易者",
+            "callback_data": f"low_freq_traders_{self.token.contract_address}"
+        }])
+
+        return keyboard
+
+    def format_message(self, token_symbols: Dict[str, str] = None) -> str:
+        """格式化为Telegram消息
+
+        Args:
+            token_symbols: 代币地址到symbol的映射
+        """
         # GMGN链接
         token_url = f"https://gmgn.ai/sol/token/{self.token.contract_address}"
 
-        message = f"""🚨 **GAKE警报** 🚨
+        # 使用HTML格式
+        message = f"""🎯 <a href="{token_url}">发现符合条件的代币: {self.token.symbol}</a>
 
-🪙 代币: [{self.token.symbol}]({token_url})
-📈 涨幅: **{price_percent}**
-💰 市值: ${self.token.market_cap:,.0f}
-⏰ 时间: {self.analysis_time.strftime('%H:%M:%S')}
+📈 涨幅: {self.price_increase:.2f}%
+💰 当前市值: ${self.token.market_cap:,.0f}
 
-🔍 **可疑地址** ({len(self.suspicious_addresses)}个):
-"""
+🔥 [{self.token.symbol}]异动交易者
+🔢 共同交易代币种类: {len(self.common_tokens)}
+───────────────────────────────────"""
 
-        # 添加可疑地址链接（最多显示10个）
-        for i, addr in enumerate(self.suspicious_addresses[:10]):
-            addr_url = f"https://gmgn.ai/sol/address/{addr}"
-            message += f"[{addr[:8]}...]({addr_url})\n"
+        # 添加共同代币列表
+        for i, token_addr in enumerate(self.common_tokens[:10]):
+            token_url_item = f"https://gmgn.ai/sol/token/{token_addr}"
 
-        if len(self.suspicious_addresses) > 10:
-            message += f"...还有{len(self.suspicious_addresses) - 10}个地址\n"
+            # 获取交易该代币的地址数量
+            addr_count = self.token_address_count.get(token_addr, 0)
 
-        # 添加共同代币
-        if self.common_tokens:
-            message += f"\n🔗 **共同交易代币** ({len(self.common_tokens)}个):\n"
-            for i, token_addr in enumerate(self.common_tokens[:5]):
-                token_url = f"https://gmgn.ai/sol/token/{token_addr}"
-                message += f"[{token_addr[:8]}...]({token_url})\n"
+            # 获取代币symbol
+            if token_symbols and token_addr in token_symbols:
+                token_symbol = token_symbols[token_addr]
+            else:
+                # 后备方案
+                if token_addr == 'So11111111111111111111111111111111111111112':
+                    token_symbol = 'SOL'
+                elif token_addr == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                    token_symbol = 'USDC'
+                else:
+                    token_symbol = token_addr[:8] + '...'
 
-            if len(self.common_tokens) > 5:
-                message += f"...还有{len(self.common_tokens) - 5}个代币\n"
+            message += f'\n {i+1}. <a href="{token_url_item}">{token_symbol}</a> ({addr_count}人)'
 
-        # 添加cabal代币
-        if self.cabal_tokens:
-            message += f"\n⚠️ **Cabal代币** ({len(self.cabal_tokens)}个):\n"
-            for token_addr in self.cabal_tokens:
-                token_url = f"https://gmgn.ai/sol/token/{token_addr}"
-                message += f"[{token_addr[:8]}...]({token_url})\n"
+        # 计算低频交易者统计
+        total_addresses = len(self.address_profiles)
+        low_freq_7d = sum(1 for profile in self.address_profiles.values()
+                         if profile.transaction_count_7d < 30)
+        low_freq_30d = sum(1 for profile in self.address_profiles.values()
+                          if profile.transaction_count_30d < 50)
+
+        message += f"""
+
+───────────────────────────────────
+📊 [{self.token.symbol}] 低频交易者统计：
+🕒 7d低频（小于30次）：{low_freq_7d}/{total_addresses}
+🕒 30d低频（小于50次）：{low_freq_30d}/{total_addresses}
+👥 分析地址: 最近 {total_addresses} 个"""
 
         return message
 
@@ -123,6 +191,7 @@ class GakeTokenMonitor:
     def __init__(self):
         self.logger = get_logger("GakeTokenMonitor")
         self.jupiter_crawler = JupiterTopTradedCrawler()
+        self.jupiter_token_crawler = JupiterTokenCrawler()
         self.okx_crawler = OKXTokenTradingHistoryCrawler(performance_mode='high_speed')
         self.address_analyzer = AddressAnalyzer(performance_mode='high_speed')
 
@@ -137,19 +206,20 @@ class GakeTokenMonitor:
         self.snapshots: Dict[str, List[TokenSnapshot]] = {}  # contract_address -> [snapshots]
         self.snapshot_lock = threading.Lock()
 
-        # 监控配置
-        self.min_market_cap = 10000  # 10k
-        self.max_market_cap = 30000  # 30k
-        self.min_volume_1h = 1000    # 1k
-        self.min_age_minutes = 720   # 12小时 = 720分钟
-        self.price_increase_threshold = 20.0  # 20%涨幅
-        self.snapshot_interval = 30  # 30秒间隔
+        # 监控配置 - 从配置文件读取
+        gake_config = _config_manager._config.get('gake_monitor', {}) if _config_manager._config else {}
+        self.min_market_cap = gake_config.get('min_market_cap', 10000)  # 10k
+        self.max_market_cap = gake_config.get('max_market_cap', 30000)  # 30k
+        self.min_volume_1h = gake_config.get('min_volume_1h', 1000)    # 1k
+        self.min_age_minutes = gake_config.get('min_age_minutes', 720)   # 12小时 = 720分钟
+        self.price_increase_threshold = gake_config.get('price_increase_threshold', 20.0)  # 20%涨幅
+        self.snapshot_interval = gake_config.get('snapshot_interval', 20)  # 20秒间隔
 
-        # cabal代币列表 (示例，需要根据实际情况配置)
-        self.cabal_tokens = set([
-            # 这里需要添加已知的cabal代币地址
-            "So11111111111111111111111111111111111111112",  # SOL (示例)
-        ])
+        # 从配置文件加载cabal代币列表
+        self.cabal_tokens = set(get_cabal_tokens())
+
+        # 从配置文件加载可疑地址判断标准
+        self.suspicious_criteria = get_suspicious_criteria()
 
     def _setup_okx_auth(self):
         """设置OKX认证信息"""
@@ -331,6 +401,7 @@ class GakeTokenMonitor:
         alerts = []
 
         with self.snapshot_lock:
+            compared_count = 0
             for contract_address, snapshots in self.snapshots.items():
                 if len(snapshots) < 2:
                     continue  # 需要至少2个快照才能比较
@@ -339,15 +410,29 @@ class GakeTokenMonitor:
                 latest = snapshots[-1]
                 previous = snapshots[-2]
 
+                compared_count += 1
+
                 # 计算涨幅
                 if previous.price > 0:
                     price_increase = ((latest.price - previous.price) / previous.price) * 100
 
+                    # 记录每次比较的详细信息
+                    self.logger.info(f"📊 价格比较 #{compared_count}: {latest.symbol}")
+                    self.logger.info(f"   前次: ${previous.price:.8f} (市值: ${previous.market_cap:,.0f}) - {previous.timestamp.strftime('%H:%M:%S')}")
+                    self.logger.info(f"   当前: ${latest.price:.8f} (市值: ${latest.market_cap:,.0f}) - {latest.timestamp.strftime('%H:%M:%S')}")
+                    self.logger.info(f"   变化: {price_increase:+.2f}% {'🚨' if abs(price_increase) >= self.price_increase_threshold else '✅'}")
+
                     if price_increase >= self.price_increase_threshold:
+                        self.logger.warning(f"🚨 {latest.symbol} 价格暴涨 {price_increase:+.2f}%! 开始地址分析...")
                         # 发现涨幅超过阈值，进行地址分析
                         alert = self._analyze_suspicious_activity(latest, price_increase)
                         if alert:
                             alerts.append(alert)
+                else:
+                    self.logger.warning(f"⚠️ {latest.symbol} 前次价格为0，跳过比较")
+
+            if compared_count > 0:
+                self.logger.info(f"📈 本轮比较了 {compared_count} 个代币的价格变化")
 
         return alerts
 
@@ -356,10 +441,10 @@ class GakeTokenMonitor:
         try:
             self.logger.info(f"🔍 分析代币 {token.symbol} 的可疑活动 (涨幅: {price_increase:.2f}%)")
 
-            # 获取最近20个交易地址
+            # 获取最近100个交易地址 (去重后约35个唯一地址)
             trading_addresses = self.okx_crawler.get_token_trading_addresses(
                 token.contract_address,
-                limit=20
+                limit=100
             )
 
             if not trading_addresses:
@@ -395,15 +480,25 @@ class GakeTokenMonitor:
                         self.logger.error(f"❌ 分析地址 {address} 时出错: {str(e)}")
 
             # 检查是否有足够的可疑地址
-            if len(suspicious_addresses) >= 2:  # 至少2个可疑地址
+            min_suspicious = self.suspicious_criteria.get('min_suspicious_addresses', 2)
+            if len(suspicious_addresses) >= min_suspicious:
                 # 分析共同代币（仅分析可疑地址的共同代币）
-                common_tokens = self._find_common_tokens_among_addresses(
-                    {addr: address_profiles[addr] for addr in suspicious_addresses if addr in address_profiles},
+                suspicious_profiles = {addr: address_profiles[addr] for addr in suspicious_addresses if addr in address_profiles}
+                common_tokens, token_address_count = self._find_common_tokens_with_count(
+                    suspicious_profiles,
                     min_addresses=2
                 )
 
                 # 取最多50个共同代币避免消息过长
                 common_tokens = common_tokens[:50]
+
+                # 统计P&L记录中有目标代币的地址数量
+                addresses_with_target_pnl = 0
+                for addr in suspicious_addresses:
+                    if addr in address_profiles:
+                        profile = address_profiles[addr]
+                        if token.contract_address in profile.common_tokens:
+                            addresses_with_target_pnl += 1
 
                 alert = GakeAlert(
                     token=token,
@@ -411,10 +506,16 @@ class GakeTokenMonitor:
                     suspicious_addresses=suspicious_addresses,
                     common_tokens=common_tokens,
                     cabal_tokens=list(all_cabal_tokens),
-                    analysis_time=datetime.now()
+                    analysis_time=datetime.now(),
+                    token_address_count=token_address_count,
+                    address_profiles=address_profiles
                 )
 
-                self.logger.info(f"🚨 发现可疑活动: {token.symbol}, {len(suspicious_addresses)}个可疑地址, {len(common_tokens)}个共同代币")
+                self.logger.info(f"🚨 发现可疑活动: {token.symbol}")
+                self.logger.info(f"   📊 分析地址: {len(suspicious_addresses)}个可疑地址")
+                self.logger.info(f"   📈 P&L记录含目标代币: {addresses_with_target_pnl}个地址")
+                self.logger.info(f"   🔗 共同交易代币: {len(common_tokens)}个")
+                self.logger.info(f"   💡 说明: P&L API获取历史交易记录，可能不包含最新交易")
                 return alert
             else:
                 self.logger.info(f"✅ {token.symbol} 未发现足够的可疑活动 (可疑地址: {len(suspicious_addresses)})")
@@ -478,6 +579,85 @@ class GakeTokenMonitor:
         common_tokens.sort(key=lambda t: len(token_count[t]), reverse=True)
 
         return common_tokens
+
+    def _find_common_tokens_with_count(self, address_profiles: Dict[str, AddressProfile],
+                                     min_addresses: int = 2) -> Tuple[List[str], Dict[str, int]]:
+        """找出多个地址共同交易的代币并返回交易地址数量
+
+        Args:
+            address_profiles: 地址档案字典
+            min_addresses: 最少地址数量
+
+        Returns:
+            (共同交易的代币列表, {代币地址: 交易该代币的地址数量})
+        """
+        # 统计每个代币被交易的地址数量
+        token_count = {}
+
+        for address, profile in address_profiles.items():
+            for token in profile.common_tokens:
+                if token not in token_count:
+                    token_count[token] = set()
+                token_count[token].add(address)
+
+        # 找出被至少min_addresses个地址交易的代币
+        common_tokens = []
+        token_address_count = {}
+
+        for token, addresses in token_count.items():
+            if len(addresses) >= min_addresses:
+                common_tokens.append(token)
+                token_address_count[token] = len(addresses)
+
+        # 按被交易的地址数量降序排列
+        common_tokens.sort(key=lambda t: len(token_count[t]), reverse=True)
+
+        return common_tokens, token_address_count
+
+    def _get_token_symbols(self, token_addresses: List[str]) -> Dict[str, str]:
+        """获取代币地址对应的symbol
+
+        Args:
+            token_addresses: 代币地址列表
+
+        Returns:
+            {代币地址: symbol} 的字典
+        """
+        try:
+            if not token_addresses:
+                return {}
+
+            # 使用Jupiter爬虫获取代币信息
+            tokens = self.jupiter_token_crawler.get_token_info(token_addresses)
+
+            symbol_map = {}
+            for token in tokens:
+                symbol_map[token.contract_address] = token.symbol
+
+            # 对于未找到的代币，使用默认处理
+            for addr in token_addresses:
+                if addr not in symbol_map:
+                    if addr == 'So11111111111111111111111111111111111111112':
+                        symbol_map[addr] = 'SOL'
+                    elif addr == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                        symbol_map[addr] = 'USDC'
+                    else:
+                        symbol_map[addr] = addr[:8] + '...'
+
+            return symbol_map
+
+        except Exception as e:
+            self.logger.error(f"❌ 获取代币symbol失败: {str(e)}")
+            # 返回默认处理
+            symbol_map = {}
+            for addr in token_addresses:
+                if addr == 'So11111111111111111111111111111111111111112':
+                    symbol_map[addr] = 'SOL'
+                elif addr == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                    symbol_map[addr] = 'USDC'
+                else:
+                    symbol_map[addr] = addr[:8] + '...'
+            return symbol_map
 
     def _process_alert(self, alert: GakeAlert):
         """处理警报"""

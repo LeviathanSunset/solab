@@ -119,6 +119,69 @@ crawler_performance:
       success_rate: 100.0
       description: "适合网络不稳定环境"
 
+  # OKX 代币交易历史爬虫配置
+  okx_token_trading_history:
+    high_speed:
+      max_workers: 5
+      base_delay: 0.1
+      timeout: 8.0
+      expected_speed: 4.0  # 请求/秒
+      success_rate: 100.0
+      description: "代币交易历史高速获取配置"
+
+    balanced:
+      max_workers: 3
+      base_delay: 0.5
+      timeout: 10.0
+      expected_speed: 2.0  # 请求/秒
+      success_rate: 100.0
+      description: "代币交易历史平衡配置"
+
+  # OKX 地址代币列表爬虫配置
+  okx_address_token_list:
+    high_speed:
+      max_workers: 4
+      base_delay: 0.2
+      timeout: 5.0
+      expected_speed: 3.5  # 地址/秒
+      success_rate: 100.0
+      description: "地址代币列表高速获取配置"
+
+    balanced:
+      max_workers: 3
+      base_delay: 0.5
+      timeout: 5.0
+      expected_speed: 2.6  # 地址/秒
+      success_rate: 100.0
+      description: "地址代币列表平衡配置"
+
+# Cabal代币配置
+cabal_tokens:
+  # 已知的操控代币合约地址列表
+  addresses:
+    - "So11111111111111111111111111111111111111112"  # SOL (WSOL)
+    # 在此添加更多已知的cabal代币地址
+
+  # 可疑地址判断标准
+  suspicious_criteria:
+    max_tx_count_7d: 30    # 7天最大交易次数阈值
+    max_tx_count_30d: 50   # 30天最大交易次数阈值
+    min_suspicious_addresses: 2  # 触发警报的最少可疑地址数
+
+# Gake监控配置
+gake_monitor:
+  # 价格涨幅阈值 (百分比)
+  price_increase_threshold: 3.0
+  # 监控间隔 (秒)
+  snapshot_interval: 20
+  # 市值范围
+  min_market_cap: 10000
+  max_market_cap: 30000
+  # 最小1小时成交量
+  min_volume_1h: 1000
+  # 最小代币年龄 (分钟)
+  min_age_minutes: 720
+
 # 日志配置
 logging:
   level: "INFO"
