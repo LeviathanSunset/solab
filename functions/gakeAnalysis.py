@@ -112,8 +112,8 @@ class GakeAlert:
                     token_symbol = token_addr[:8] + '...'
 
             button_text = f"🪙 {token_symbol}"
-            # 格式: token_details_{共同代币地址}_{目标代币地址}
-            callback_data = f"token_details_{token_addr}_{self.token.contract_address}"
+            # 简化格式，只传递共同代币地址
+            callback_data = f"token_details_{token_addr}"
             keyboard.append([{
                 "text": button_text,
                 "callback_data": callback_data
@@ -122,7 +122,7 @@ class GakeAlert:
         # 添加查看所有低频交易者按钮
         keyboard.append([{
             "text": "🔍 查看所有低频交易者",
-            "callback_data": f"low_freq_traders_{self.token.contract_address}"
+            "callback_data": f"low_freq_{self.token.contract_address[:20]}"  # 缩短到符合限制
         }])
 
         return keyboard

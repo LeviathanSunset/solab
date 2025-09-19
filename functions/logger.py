@@ -48,10 +48,13 @@ class SoLabLogger:
         # 按日期创建日志文件
         today = datetime.now().strftime('%Y%m%d')
         log_file = os.path.join(log_dir, f'solab_{today}.log')
-        
+
+        # 检查日志行数，超过10000行则删除
+        self._check_and_clean_log(log_file)
+
         # 使用RotatingFileHandler避免日志文件过大
         file_handler = logging.handlers.RotatingFileHandler(
-            log_file, 
+            log_file,
             maxBytes=50*1024*1024,  # 50MB
             backupCount=5,
             encoding='utf-8'
@@ -65,6 +68,19 @@ class SoLabLogger:
         
         # 防止日志向上传播
         self.logger.propagate = False
+
+    def _check_and_clean_log(self, log_file: str):
+        """检查日志行数，超过10000行则删除"""
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    line_count = sum(1 for line in f)
+
+                if line_count > 10000:
+                    os.remove(log_file)
+                    print(f"日志文件 {log_file} 超过10000行({line_count}行)，已删除")
+        except Exception as e:
+            print(f"检查日志文件时出错: {e}")
     
     def get_logger(self):
         """获取日志器"""

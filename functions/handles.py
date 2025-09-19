@@ -575,15 +575,12 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
     def handle_token_details(call):
         """处理查看交易地址按钮点击 - 显示目标代币交易者中也交易过该共同代币的地址"""
         try:
-            # 解析callback_data: token_details_{共同代币地址}_{目标代币地址}
-            data_parts = call.data.replace('token_details_', '').split('_')
-            if len(data_parts) >= 2:
-                common_token_address = '_'.join(data_parts[:-1])  # 共同代币地址可能包含下划线
-                target_token_address = data_parts[-1]
-            else:
-                # 兼容旧格式
-                common_token_address = call.data.replace('token_details_', '')
-                target_token_address = None
+            # 提取共同代币地址
+            common_token_address = call.data.replace('token_details_', '')
+
+            # 由于callback_data长度限制，无法传递目标代币地址
+            # 显示该共同代币的交易地址
+            target_token_address = None
 
             # 获取共同代币信息
             from crawlers.jupiter.multiTokenProfiles import JupiterTokenCrawler
@@ -686,19 +683,19 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
             bot.answer_callback_query(call.id, "❌ 处理失败")
             print(f"❌ 处理代币详情按钮失败: {e}")
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('low_freq_traders_'))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('low_freq_'))
     def handle_low_freq_traders(call):
         """处理查看低频交易者按钮点击"""
         try:
-            # 提取代币地址
-            token_address = call.data.replace('low_freq_traders_', '')
+            # 提取代币地址前缀
+            token_prefix = call.data.replace('low_freq_', '')
 
             # 这里可以实现查看低频交易者的详细信息
             # 目前先返回一个简单的消息
             detail_message = f"""🔍 低频交易者详情
 
 📊 正在分析代币的低频交易者...
-🔗 代币地址: <code>{token_address}</code>
+🔗 代币地址前缀: <code>{token_prefix}...</code>
 
 ⚠️ 此功能正在开发中"""
 
