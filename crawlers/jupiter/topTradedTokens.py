@@ -146,7 +146,7 @@ class JupiterTopTradedCrawler:
                         created_at = datetime.now()
                 else:
                     created_at = datetime.now()
-                
+
                 # 获取交易量数据 (用于分页逻辑，但不保存到Token对象)
                 volume_data = {}
                 for time_frame in ['5m', '1h', '6h', '24h']:
@@ -157,7 +157,7 @@ class JupiterTopTradedCrawler:
                         sell_volume = stats.get('sellVolume', 0)
                         total_volume = buy_volume + sell_volume
                         volume_data[time_frame] = total_volume
-                
+
                 token = Token(
                     contract_address=base_asset.get('id', ''),
                     symbol=base_asset.get('symbol', ''),
@@ -166,9 +166,16 @@ class JupiterTopTradedCrawler:
                     decimals=base_asset.get('decimals', 0),
                     created_at=created_at
                 )
-                
+
                 # 临时保存交易量信息用于分页逻辑
                 token._volume_data = volume_data  # 临时属性
+
+                # 添加市值和价格信息
+                token._market_cap = base_asset.get('mcap', 0)  # 市值
+                token._price = base_asset.get('usdPrice', 0)    # USD价格
+                token._fdv = base_asset.get('fdv', 0)           # 完全摊薄估值
+                token._liquidity = base_asset.get('liquidity', 0)  # 流动性
+
                 tokens.append(token)
             
             print(f"成功获取 {len(tokens)} 个代币")

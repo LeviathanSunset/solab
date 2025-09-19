@@ -144,17 +144,27 @@ class SoLabBot:
 /help - 显示帮助信息
 /status - 显示bot状态
 /ping - 测试连接
-/rape - 代币分析相关命令
+
+🔍 **分析功能:**
+/rape - 代币持有者分析
   • /rape - 查看分析状态
   • /rape on - 启动分析
   • /rape off - 停止分析
 
-🔧 功能:
-• 持续监控热门代币
-• 智能持有者分析
-• 自动推送符合条件的代币
+🚨 **GAKE监控:**
+/gake - 可疑代币活动检测
+  • /gake - 查看监控状态
+  • /gake on - 启动监控
+  • /gake off - 停止监控
 
-💡 使用 /rape on 开始分析
+🔧 **功能介绍:**
+• **RAPE**: 监控热门代币并分析持有者结构
+• **GAKE**: 监控10k-30k市值代币的可疑价格操作
+  - 检测20%+价格上涨
+  - 分析交易地址的活跃度
+  - 识别可疑地址的共同代币和cabal关联
+
+💡 分别使用 /rape on 和 /gake on 启动对应功能
             """
             self.bot.reply_to(message, welcome_text.strip())
         

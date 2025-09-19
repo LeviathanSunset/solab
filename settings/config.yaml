@@ -65,6 +65,17 @@ crawlers:
         # 持有者分析筛选条件
         min_holders: 8  # 至少6个地址持有同一代币
         min_total_value: 10000  # 总价值超过20万美元
+      
+      # Gake 功能专用预设 - 1小时
+      1H:
+        timeFrame: "1h"
+        mintAuthorityDisabled: true
+        freezeAuthorityDisabled: true
+        minVolume: 1000
+        minMcap: 10000
+        maxMcap: 30000
+        hasSocials: true
+        minTokenAge: 720 # 单位是分钟
 
 
 

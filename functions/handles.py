@@ -20,6 +20,7 @@ from telebot import types
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from functions.topTradedTokenHolderAnalysis import TopTradedTokenHolderAnalyzer
+from functions.gakeAnalysis import GakeTokenMonitor
 from functions.logger import CrawlerLogger, get_logger
 from settings.config_manager import ConfigManager
 
@@ -270,11 +271,120 @@ class RapeAnalysisManager:
             self.logger.error(error_msg)
 
 
+class GakeAnalysisManager:
+    """Gake分析管理器"""
+
+    def __init__(self, bot: telebot.TeleBot, target_chat_id: str, topic_id: str):
+        self.bot = bot
+        self.target_chat_id = target_chat_id
+        self.topic_id = topic_id
+        self.gake_monitor = GakeTokenMonitor()
+        self.is_running = False
+
+        # 初始化日志器
+        self.logger = get_logger("TelegramBot.GakeAnalysisManager")
+
+    def start_gake_monitoring(self, user_id: int):
+        """开始Gake监控"""
+        if self.is_running:
+            return False, "Gake监控已在运行中"
+
+        # 定义警报回调函数
+        def gake_alert_callback(alert):
+            """Gake警报回调函数"""
+            try:
+                # 格式化警报消息
+                message = alert.format_message()
+
+                # 发送到群组
+                self._send_to_group(f"🚨 **GAKE 警报** 🚨\n\n{message}")
+
+            except Exception as e:
+                self.logger.error(f"❌ 发送Gake警报失败: {str(e)}")
+
+        # 启动监控
+        success = self.gake_monitor.start_monitoring(callback=gake_alert_callback)
+
+        if success:
+            self.is_running = True
+            return True, "Gake监控已启动"
+        else:
+            return False, "启动Gake监控失败"
+
+    def stop_gake_monitoring(self):
+        """停止Gake监控"""
+        if not self.is_running:
+            return False, "没有正在运行的Gake监控"
+
+        success = self.gake_monitor.stop_monitoring()
+
+        if success:
+            self.is_running = False
+            return True, "Gake监控已停止"
+        else:
+            return False, "停止Gake监控失败"
+
+    def get_gake_status(self) -> str:
+        """获取Gake监控状态"""
+        if not self.is_running:
+            return "🔴 Gake监控未运行"
+
+        status_info = self.gake_monitor.get_status()
+
+        status = f"""
+🟢 Gake监控运行中
+
+📊 监控配置:
+   • 市值范围: ${self.gake_monitor.min_market_cap:,} - ${self.gake_monitor.max_market_cap:,}
+   • 最小成交量: ${self.gake_monitor.min_volume_1h:,} (1小时)
+   • 最小年龄: {self.gake_monitor.min_age_minutes} 分钟
+   • 涨幅阈值: {self.gake_monitor.price_increase_threshold}%
+
+📈 监控状态:
+   • 监控代币: {status_info['monitored_tokens']} 个
+   • 快照总数: {status_info['total_snapshots']} 个
+   • 快照间隔: {status_info['snapshot_interval']} 秒
+        """
+        return status.strip()
+
+    def _send_to_group(self, message: str):
+        """发送消息到群组"""
+        try:
+            # 将Markdown链接转换为HTML格式
+            import re
+            # 转换 [text](url) 为 <a href="url">text</a>
+            html_message = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', message)
+
+            if self.topic_id:
+                # 发送到指定话题
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=html_message,
+                    message_thread_id=int(self.topic_id),
+                    parse_mode='HTML',
+                    disable_web_page_preview=True
+                )
+                self.logger.debug(f"📤 Gake消息已发送到话题 {self.topic_id}")
+            else:
+                # 发送到群组
+                self.bot.send_message(
+                    chat_id=self.target_chat_id,
+                    text=html_message,
+                    parse_mode='HTML',
+                    disable_web_page_preview=True
+                )
+                self.logger.debug("📤 Gake消息已发送到群组")
+        except Exception as e:
+            error_msg = f"发送Gake消息到群组失败: {e}"
+            self.logger.error(error_msg)
+
+
 def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
     """设置rape相关命令处理器"""
-    
+
     # 创建分析管理器
     analysis_manager = RapeAnalysisManager(bot, chat_id, topic_id)
+    gake_manager = GakeAnalysisManager(bot, chat_id, topic_id)
     
     def _should_respond_to_command(message):
         """检查是否应该响应此命令"""
@@ -378,5 +488,74 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
             )
         else:
             bot.answer_callback_query(call.id, f"❌ {msg}")
-    
+
+    @bot.message_handler(commands=['gake'])
+    def gake_command(message):
+        """处理 /gake 命令"""
+        # 检查命令是否针对此bot
+        if not _should_respond_to_command(message):
+            return
+
+        # 解析命令参数
+        command_text = message.text.strip()
+        parts = command_text.split()
+
+        if len(parts) == 1:
+            # 只有 /gake - 查看状态
+            status = gake_manager.get_gake_status()
+            bot.reply_to(message, status)
+
+        elif len(parts) == 2:
+            action = parts[1].lower()
+
+            if action == 'on':
+                # /gake on - 启动Gake监控
+                if gake_manager.is_running:
+                    bot.reply_to(message, "🔴 Gake监控已在运行中，请先使用 /gake off 停止")
+                    return
+
+                success, msg = gake_manager.start_gake_monitoring(message.from_user.id)
+
+                if success:
+                    startup_msg = f"""🚀 **Gake监控已启动** 🚀
+
+📊 **监控配置:**
+• 市值范围: $10,000 - $30,000
+• 最小成交量: $1,000 (1小时)
+• 最小年龄: 720 分钟 (12小时)
+• 涨幅阈值: 20%
+• 监控间隔: 30秒
+
+🔍 **分析内容:**
+• 监控符合条件的代币价格变动
+• 分析交易地址的7天、30天交易频率
+• 检测可疑地址共同交易的代币
+• 识别cabal代币关联
+
+⚠️ **触发条件:**
+• 代币价格30秒内上涨超过20%
+• 至少2个可疑地址参与交易
+• 可疑地址定义: 7天或30天交易次数<50
+
+📢 **符合条件的可疑活动将自动推送到群组**
+                    """
+                    bot.reply_to(message, startup_msg.strip())
+                else:
+                    bot.reply_to(message, f"❌ {msg}")
+
+            elif action == 'off':
+                # /gake off - 停止Gake监控
+                success, msg = gake_manager.stop_gake_monitoring()
+                if success:
+                    bot.reply_to(message, f"🛑 {msg}")
+                else:
+                    bot.reply_to(message, f"⚠️ {msg}")
+
+            else:
+                bot.reply_to(message, "❌ 未知参数。使用: /gake, /gake on, /gake off")
+
+        else:
+            bot.reply_to(message, "❌ 参数错误。使用: /gake, /gake on, /gake off")
+
+    # 返回管理器（主要是analysis_manager用于向后兼容）
     return analysis_manager
