@@ -26,7 +26,7 @@ from settings.config_manager import ConfigManager
 class OKXTokenTradingHistoryCrawler:
     """OKX DEX 代币交易历史爬虫"""
     
-    def __init__(self, performance_mode: str = 'balanced'):
+    def __init__(self, performance_mode: str = 'high_speed'):
         """初始化爬虫
         
         Args:
@@ -36,7 +36,7 @@ class OKXTokenTradingHistoryCrawler:
         
         # 性能配置管理
         self.config_manager = ConfigManager()
-        self.performance_config = self.config_manager.get_crawler_performance_config(
+        self.performance_config = self.config_manager.get_performance_config(
             'okx_token_trading_history', performance_mode
         )
         
@@ -238,8 +238,8 @@ class OKXTokenTradingHistoryCrawler:
             }
         }
     
-    def get_token_trading_addresses(self, token_address: str, 
-                                  chain_id: int = 501, 
+    def get_token_trading_addresses(self, token_address: str,
+                                  chain_id: int = 501,
                                   limit: int = 50) -> List[str]:
         """获取代币最近交易的地址数组
         
@@ -251,9 +251,7 @@ class OKXTokenTradingHistoryCrawler:
         Returns:
             交易地址列表
         """
-        session = self._create_new_session()
-        if not session:
-            return []
+        session = self._get_or_create_session()
         
         try:
             # 构建请求URL和payload
@@ -317,7 +315,46 @@ class OKXTokenTradingHistoryCrawler:
             return []
         finally:
             self._return_session(session)
-    
+
+    def get_unique_trading_addresses(self, token_address: str,
+                                   chain_id: int = 501,
+                                   target_count: int = 50) -> List[str]:
+        """获取精确数量的唯一交易地址
+
+        Args:
+            token_address: 代币合约地址
+            chain_id: 链ID
+            target_count: 目标获取的唯一地址数量
+
+        Returns:
+            唯一交易地址列表
+        """
+        unique_addresses = set()
+        batch_size = target_count + 10  # 多获取一些以应对重复
+        max_attempts = 3
+
+        for attempt in range(max_attempts):
+            # 获取更大批次的交易记录
+            current_limit = batch_size * (attempt + 1)
+            addresses = self.get_token_trading_addresses(token_address, chain_id, current_limit)
+
+            if addresses:
+                unique_addresses.update(addresses)
+                print(f"尝试 {attempt + 1}: 获得 {len(unique_addresses)} 个唯一地址")
+
+                # 如果获得足够的唯一地址，返回前target_count个
+                if len(unique_addresses) >= target_count:
+                    result = list(unique_addresses)[:target_count]
+                    print(f"✅ 成功获取 {len(result)} 个唯一交易地址")
+                    return result
+
+            time.sleep(1)  # 避免请求过频
+
+        # 如果无法获取足够数量，返回所有可用的
+        result = list(unique_addresses)
+        print(f"⚠️ 仅获取到 {len(result)} 个唯一地址（目标：{target_count}）")
+        return result
+
     def get_token_trading_details(self, token_address: str, 
                                 chain_id: int = 501, 
                                 limit: int = 50) -> List[Dict[str, Any]]:

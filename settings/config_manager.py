@@ -111,36 +111,62 @@ class ConfigManager:
 
     def build_jupiter_api_params(self, preset_name: str) -> Optional[Dict[str, Any]]:
         """构建Jupiter API请求参数
-        
+
         Args:
             preset_name: 预设名称
-            
+
         Returns:
             API请求参数字典，包含正确的时间后缀
         """
         params = self.get_toptraded_params(preset_name)
         if not params:
             return None
-        
+
         # 复制参数避免修改原始配置
         api_params = params.copy()
-        
+
         # 获取时间框架
         time_frame = api_params.pop('timeFrame', '5m')
-        
+
         # 处理交易量参数，添加时间后缀
         if 'minVolume' in api_params:
             min_volume = api_params.pop('minVolume')
             api_params[f'minVolume{time_frame}'] = min_volume
-        
+
         if 'maxVolume' in api_params:
             max_volume = api_params.pop('maxVolume')
             api_params[f'maxVolume{time_frame}'] = max_volume
-        
+
         return {
             'timeFrame': time_frame,
             'params': api_params
         }
+
+    def get_performance_config(self, crawler_name: str, mode: str) -> Dict[str, Any]:
+        """获取性能配置 - 为了兼容性添加的别名方法"""
+        return self.get_crawler_performance_config(crawler_name, mode) or {}
+
+    def get_cabal_tokens(self) -> list:
+        """获取cabal代币地址列表"""
+        if not self._config:
+            return ["So11111111111111111111111111111111111111112"]  # 默认SOL
+        return self._config.get('cabal_tokens', {}).get('addresses', [
+            "So11111111111111111111111111111111111111112"
+        ])
+
+    def get_suspicious_criteria(self) -> Dict[str, int]:
+        """获取可疑地址判断标准"""
+        if not self._config:
+            return {
+                'max_tx_count_7d': 50,
+                'max_tx_count_30d': 50,
+                'min_suspicious_addresses': 2
+            }
+        return self._config.get('cabal_tokens', {}).get('suspicious_criteria', {
+            'max_tx_count_7d': 50,
+            'max_tx_count_30d': 50,
+            'min_suspicious_addresses': 2
+        })
 
 # 创建全局配置管理器实例
 config_manager = ConfigManager()
