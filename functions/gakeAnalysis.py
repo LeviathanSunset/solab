@@ -211,7 +211,7 @@ class GakeTokenMonitor:
         gake_config = _config_manager._config.get('gake_monitor', {}) if _config_manager._config else {}
         self.min_market_cap = gake_config.get('min_market_cap', 10000)  # 10k
         self.max_market_cap = gake_config.get('max_market_cap', 30000)  # 30k
-        self.min_volume_1h = gake_config.get('min_volume_1h', 1000)    # 1k
+        self.min_volume_1h = gake_config.get('min_volume_1h', 500)     # 500
         self.min_age_minutes = gake_config.get('min_age_minutes', 720)   # 12小时 = 720分钟
         self.price_increase_threshold = gake_config.get('price_increase_threshold', 20.0)  # 20%涨幅
         self.snapshot_interval = gake_config.get('snapshot_interval', 20)  # 20秒间隔
@@ -451,7 +451,6 @@ class GakeTokenMonitor:
 
             # 分析每个地址
             address_profiles = {}
-            suspicious_addresses = []
             all_cabal_tokens = set()
 
             # 使用线程池并发分析地址
@@ -467,25 +466,27 @@ class GakeTokenMonitor:
                         profile = future.result()
                         if profile:
                             address_profiles[address] = profile
-
-                            if profile.is_suspicious():
-                                suspicious_addresses.append(address)
-
                             # 收集cabal代币
                             all_cabal_tokens.update(profile.cabal_tokens)
 
                     except Exception as e:
                         self.logger.error(f"❌ 分析地址 {address} 时出错: {str(e)}")
 
+            # 先分析所有地址的共同代币
+            common_tokens, token_address_count = self._find_common_tokens_with_count(
+                address_profiles,
+                min_addresses=3
+            )
+
+            # 然后判断可疑地址
+            suspicious_addresses = []
+            for address, profile in address_profiles.items():
+                if profile.is_suspicious():
+                    suspicious_addresses.append(address)
+
             # 检查是否有足够的可疑地址
-            min_suspicious = self.suspicious_criteria.get('min_suspicious_addresses', 2)
+            min_suspicious = self.suspicious_criteria.get('min_suspicious_addresses', 5)
             if len(suspicious_addresses) >= min_suspicious:
-                # 分析共同代币（仅分析可疑地址的共同代币）
-                suspicious_profiles = {addr: address_profiles[addr] for addr in suspicious_addresses if addr in address_profiles}
-                common_tokens, token_address_count = self._find_common_tokens_with_count(
-                    suspicious_profiles,
-                    min_addresses=2
-                )
 
                 # 取最多50个共同代币避免消息过长
                 common_tokens = common_tokens[:50]
