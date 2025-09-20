@@ -1,7 +1,26 @@
+#!/usr/bin/env python3
 """
-OKX地址资产爬虫
-获取指定地址的所有资产信息，包括代币余额、价值等
+OKX 地址资产余额爬虫 (OKXAddressBalanceCrawler)
+==============================================
+
+功能: 获取钱包地址的所有资产信息
 API: https://web3.okx.com/priapi/v2/wallet/asset/profile/all/explorer
+用途: 分析地址持仓结构，计算总资产价值
+
+主要方法:
+- get_address_balance(): 获取地址所有代币余额
+- get_balance_summary(): 获取资产汇总信息
+- 返回每个代币的余额、价值、价格等详细信息
+
+返回数据:
+- tokenSymbol: 代币符号
+- balance: 持有数量
+- balanceUsd: 美元价值
+- price: 当前价格
+- logoUrl: 代币图标
+- isVerified: 是否验证
+
+适用场景: 分析地址财富水平，识别大户行为
 """
 import requests
 import json

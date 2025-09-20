@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 """
-Jupiter 代币基本信息爬虫
-通过 Jupiter API 获取多个代币的基本信息
+Jupiter 代币基本信息爬虫 (JupiterTokenCrawler)
+===================================================
+
+功能: 通过 Jupiter API 获取多个代币的基本信息
+API: https://token.jup.ag/strict
+用途: 获取代币symbol、名称、logo等基础元数据
+
+主要方法:
+- get_token_info(token_addresses): 批量获取代币信息
+- 支持批处理，最多100个代币
+- 返回Token对象列表，包含contract_address, symbol, name, logo_url等
+
+适用场景: 当需要显示代币名称和图标时使用
 """
 
 import requests

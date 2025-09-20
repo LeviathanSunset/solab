@@ -1,3 +1,29 @@
+#!/usr/bin/env python3
+"""
+Jupiter 热门交易代币爬虫 (JupiterTopTradedCrawler)
+================================================
+
+功能: 获取Jupiter平台上最热门的交易代币
+API: https://datapi.jup.ag/v1/pools/toptraded/{timeframe}
+用途: 发现市场热点，监控交易活跃代币
+
+主要方法:
+- get_top_traded_tokens(): 获取热门代币列表
+- 支持时间框架: 1h, 4h, 1d, 7d
+- 支持筛选条件: 市值范围、成交量、代币年龄等
+- 支持分页获取，自动处理多页数据
+
+筛选参数:
+- mintAuthorityDisabled: mint权限已禁用
+- freezeAuthorityDisabled: 冻结权限已禁用
+- minMcap/maxMcap: 市值范围
+- hasSocials: 有社交媒体信息
+- minTokenAge: 最小代币年龄(分钟)
+- minVolume1h: 最小1小时成交量
+
+适用场景: GAKE监控系统的代币发现，寻找符合条件的潜在目标
+"""
+
 import requests
 import json
 import yaml

@@ -1,7 +1,25 @@
+#!/usr/bin/env python3
 """
-OKX地址代币列表爬虫
-获取指定地址最近交易的代币合约地址数组
+OKX 地址代币列表爬虫 (OKXAddressTokenListCrawler)
+============================================
+
+功能: 获取地址最近交易过的代币合约地址列表
 API: https://web3.okx.com/priapi/v1/dx/market/v2/pnl/token-list
+用途: 分析地址的代币交易偏好，发现共同交易代币
+
+主要方法:
+- get_address_token_contracts(): 获取代币合约地址数组
+- get_address_token_details(): 获取代币详细信息
+- batch_get_token_contracts(): 批量处理多个地址
+
+返回数据:
+- tokenContractAddress: 代币合约地址
+- tokenSymbol: 代币符号
+- balance: 持有余额
+- pnl: 盈亏情况
+- pnlPercentage: 盈亏百分比
+
+适用场景: GAKE系统中分析可疑地址的共同代币，识别cabal模式
 """
 import requests
 import json

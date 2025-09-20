@@ -1,13 +1,26 @@
+#!/usr/bin/env python3
 """
-OKX地址基本信息爬虫模块
-====================
+OKX 地址画像分析爬虫 (OKXAddressProfileCrawler)
+============================================
 
-功能说明:
-- 爬取OKX DEX平台上钱包地址的详细交易分析数据
-- 获取包括盈亏、交易统计、持仓信息等综合数据
-- 支持批量获取和数据导出功能
+功能: 获取地址的交易行为画像和统计数据
+API: https://web3.okx.com/priapi/v1/dx/market/v2/pnl/address-overview
+用途: 分析地址的交易活跃度、盈亏情况、风险等级
 
-主要数据类型:
+主要方法:
+- get_address_profile(): 获取地址完整画像
+- batch_get_profiles(): 批量获取多个地址画像
+- 支持高并发处理和性能优化
+
+返回数据:
+- totalTradeCount: 总交易次数
+- tradeCount7d/30d: 7天/30天交易次数
+- totalPnl: 总盈亏
+- winRate: 胜率
+- avgHoldingTime: 平均持仓时间
+- 风险等级评估
+
+适用场景: GAKE系统中识别可疑地址，分析交易频率
 - AddressProfile: 钱包地址完整资料模型
 - DailyPnl: 每日盈亏数据
 - TopToken: 表现最佳代币信息

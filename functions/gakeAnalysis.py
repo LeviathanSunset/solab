@@ -137,12 +137,12 @@ class GakeAlert:
         token_url = f"https://gmgn.ai/sol/token/{self.token.contract_address}"
 
         # 使用HTML格式
-        message = f"""🎯 <a href="{token_url}">发现符合条件的代币: {self.token.symbol}</a>
+        message = f"""🎯 发现符合条件的代币: <a href="{token_url}">{self.token.symbol}</a>
 
 📈 涨幅: {self.price_increase:.2f}%
 💰 当前市值: ${self.token.market_cap:,.0f}
 
-🔥 [{self.token.symbol}]异动交易者
+🔥 [<a href="{token_url}">{self.token.symbol}</a>]交易者
 🔢 共同交易代币种类: {len(self.common_tokens)}
 ───────────────────────────────────"""
 
@@ -177,7 +177,7 @@ class GakeAlert:
         message += f"""
 
 ───────────────────────────────────
-📊 [{self.token.symbol}] 低频交易者统计：
+📊 [<a href="{token_url}">{self.token.symbol}</a>] 低频交易者统计：
 🕒 7d低频（小于30次）：{low_freq_7d}/{total_addresses}
 🕒 30d低频（小于50次）：{low_freq_30d}/{total_addresses}
 👥 分析地址: 最近 {total_addresses} 个"""
@@ -202,8 +202,9 @@ class GakeTokenMonitor:
         self.is_running = False
         self.monitor_thread = None
 
-        # 快照存储
-        self.snapshots: Dict[str, List[TokenSnapshot]] = {}  # contract_address -> [snapshots]
+        # 快照存储 - 只保留两个全局快照：上一次和当前
+        self.previous_snapshots: Dict[str, TokenSnapshot] = {}  # contract_address -> snapshot
+        self.current_snapshots: Dict[str, TokenSnapshot] = {}   # contract_address -> snapshot
         self.snapshot_lock = threading.Lock()
 
         # 监控配置 - 从配置文件读取
@@ -277,12 +278,17 @@ class GakeTokenMonitor:
                 if tokens:
                     self.logger.info(f"📊 本轮获取到 {len(tokens)} 个符合条件的代币")
 
-                    # 创建快照
-                    current_time = datetime.now()
-                    for token in tokens:
-                        snapshot = self._create_token_snapshot(token, current_time)
-                        if snapshot:
-                            self._store_snapshot(snapshot)
+                    # 更新快照：将当前快照移动到previous，创建新的current
+                    with self.snapshot_lock:
+                        self.previous_snapshots = self.current_snapshots.copy()
+                        self.current_snapshots = {}
+
+                        # 创建当前快照
+                        current_time = datetime.now()
+                        for token in tokens:
+                            snapshot = self._create_token_snapshot(token, current_time)
+                            if snapshot:
+                                self.current_snapshots[snapshot.contract_address] = snapshot
 
                     # 检查价格变动
                     alerts = self._check_price_changes()
@@ -292,6 +298,10 @@ class GakeTokenMonitor:
                         self._process_alert(alert)
                 else:
                     self.logger.info("📊 本轮未获取到符合条件的代币")
+                    # 清空快照
+                    with self.snapshot_lock:
+                        self.previous_snapshots = self.current_snapshots.copy()
+                        self.current_snapshots = {}
 
                 # 等待下一轮
                 if self.is_running:
@@ -382,57 +392,45 @@ class GakeTokenMonitor:
             self.logger.error(f"❌ 创建快照失败 {token.contract_address}: {str(e)}")
             return None
 
-    def _store_snapshot(self, snapshot: TokenSnapshot):
-        """存储快照"""
-        with self.snapshot_lock:
-            if snapshot.contract_address not in self.snapshots:
-                self.snapshots[snapshot.contract_address] = []
-
-            # 添加新快照
-            self.snapshots[snapshot.contract_address].append(snapshot)
-
-            # 只保留最近的快照（比如最近10个）
-            if len(self.snapshots[snapshot.contract_address]) > 10:
-                self.snapshots[snapshot.contract_address] = \
-                    self.snapshots[snapshot.contract_address][-10:]
+    # 已删除旧的 _store_snapshot 方法，现在直接在监控循环中管理快照
 
     def _check_price_changes(self) -> List[GakeAlert]:
-        """检查价格变动"""
+        """检查价格变动 - 只比较当前和上一次的快照"""
         alerts = []
 
         with self.snapshot_lock:
-            compared_count = 0
-            for contract_address, snapshots in self.snapshots.items():
-                if len(snapshots) < 2:
-                    continue  # 需要至少2个快照才能比较
+            # 只比较在两个快照中都存在的代币
+            common_addresses = set(self.current_snapshots.keys()) & set(self.previous_snapshots.keys())
+            compared_count = len(common_addresses)
 
-                # 获取最新和前一个快照
-                latest = snapshots[-1]
-                previous = snapshots[-2]
+            if compared_count == 0:
+                self.logger.info("📈 没有可比较的代币（需要连续两轮数据）")
+                return alerts
 
-                compared_count += 1
+            for i, contract_address in enumerate(common_addresses, 1):
+                current = self.current_snapshots[contract_address]
+                previous = self.previous_snapshots[contract_address]
 
                 # 计算涨幅
                 if previous.price > 0:
-                    price_increase = ((latest.price - previous.price) / previous.price) * 100
+                    price_increase = ((current.price - previous.price) / previous.price) * 100
 
                     # 记录每次比较的详细信息
-                    self.logger.info(f"📊 价格比较 #{compared_count}: {latest.symbol}")
+                    self.logger.info(f"📊 价格比较 #{i}: {current.symbol}")
                     self.logger.info(f"   前次: ${previous.price:.8f} (市值: ${previous.market_cap:,.0f}) - {previous.timestamp.strftime('%H:%M:%S')}")
-                    self.logger.info(f"   当前: ${latest.price:.8f} (市值: ${latest.market_cap:,.0f}) - {latest.timestamp.strftime('%H:%M:%S')}")
+                    self.logger.info(f"   当前: ${current.price:.8f} (市值: ${current.market_cap:,.0f}) - {current.timestamp.strftime('%H:%M:%S')}")
                     self.logger.info(f"   变化: {price_increase:+.2f}% {'🚨' if abs(price_increase) >= self.price_increase_threshold else '✅'}")
 
                     if price_increase >= self.price_increase_threshold:
-                        self.logger.warning(f"🚨 {latest.symbol} 价格暴涨 {price_increase:+.2f}%! 开始地址分析...")
+                        self.logger.warning(f"🚨 {current.symbol} 价格暴涨 {price_increase:+.2f}%! 开始地址分析...")
                         # 发现涨幅超过阈值，进行地址分析
-                        alert = self._analyze_suspicious_activity(latest, price_increase)
+                        alert = self._analyze_suspicious_activity(current, price_increase)
                         if alert:
                             alerts.append(alert)
                 else:
-                    self.logger.warning(f"⚠️ {latest.symbol} 前次价格为0，跳过比较")
+                    self.logger.warning(f"⚠️ {current.symbol} 前次价格为0，跳过比较")
 
-            if compared_count > 0:
-                self.logger.info(f"📈 本轮比较了 {compared_count} 个代币的价格变化")
+            self.logger.info(f"📈 本轮比较了 {compared_count} 个代币的价格变化")
 
         return alerts
 
@@ -673,13 +671,13 @@ class GakeTokenMonitor:
     def get_status(self) -> Dict[str, Any]:
         """获取监控状态"""
         with self.snapshot_lock:
-            monitored_tokens = len(self.snapshots)
-            total_snapshots = sum(len(snaps) for snaps in self.snapshots.values())
+            current_tokens = len(self.current_snapshots)
+            previous_tokens = len(self.previous_snapshots)
 
         return {
             'is_running': self.is_running,
-            'monitored_tokens': monitored_tokens,
-            'total_snapshots': total_snapshots,
+            'current_tokens': current_tokens,
+            'previous_tokens': previous_tokens,
             'snapshot_interval': self.snapshot_interval,
             'price_threshold': self.price_increase_threshold
         }

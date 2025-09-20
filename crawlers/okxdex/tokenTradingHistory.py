@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
-OKX DEX 代币交易历史爬虫
-获取目标代币最近交易的地址数组
+OKX 代币交易历史爬虫 (OKXTokenTradingHistoryCrawler)
+===============================================
+
+功能: 获取代币最近交易的地址列表
+API: https://web3.okx.com/priapi/v3/simple/swap/trades
+用途: 发现代币的活跃交易者，分析交易行为
+
+主要方法:
+- get_token_trading_addresses(): 获取交易地址数组
+- 支持分页获取大量交易数据
+- 自动去重，返回唯一地址列表
+
+返回数据:
+- 交易者地址数组
+- 支持限制数量和时间范围
+- 按时间排序
+
+适用场景: GAKE系统中获取目标代币的可疑交易者
 """
 
 import requests

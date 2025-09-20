@@ -321,6 +321,9 @@ class GakeAnalysisManager:
         # 初始化日志器
         self.logger = get_logger("TelegramBot.GakeAnalysisManager")
 
+        # 警报数据缓存 - 存储最近的警报数据，按代币地址前缀索引
+        self.alert_cache = {}  # {token_prefix: GakeAlert}
+
     def start_gake_monitoring(self, user_id: int):
         """开始Gake监控"""
         if self.is_running:
@@ -334,6 +337,15 @@ class GakeAnalysisManager:
                 token_symbols = {}
                 if alert.common_tokens:
                     token_symbols = self.gake_monitor._get_token_symbols(alert.common_tokens)
+
+                # 保存警报数据到缓存
+                token_prefix = alert.token.contract_address[:20]
+                self.alert_cache[token_prefix] = alert
+
+                # 清理旧缓存（只保留最近10个）
+                if len(self.alert_cache) > 10:
+                    oldest_key = list(self.alert_cache.keys())[0]
+                    del self.alert_cache[oldest_key]
 
                 # 格式化警报消息
                 message = alert.format_message(token_symbols)
@@ -577,10 +589,14 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
         try:
             # 提取共同代币地址
             common_token_address = call.data.replace('token_details_', '')
+            print(f"🔍 处理代币详情按钮，代币地址: {common_token_address}")
 
-            # 由于callback_data长度限制，无法传递目标代币地址
-            # 显示该共同代币的交易地址
-            target_token_address = None
+            # 从警报缓存中找到包含该共同代币的警报
+            target_alert = None
+            for token_prefix, alert in gake_manager.alert_cache.items():
+                if common_token_address in alert.common_tokens:
+                    target_alert = alert
+                    break
 
             # 获取共同代币信息
             from crawlers.jupiter.multiTokenProfiles import JupiterTokenCrawler
@@ -591,54 +607,51 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
                 common_token = tokens[0]
                 token_url = f"https://gmgn.ai/sol/token/{common_token_address}"
 
-                if target_token_address:
-                    # 获取目标代币的交易地址
-                    target_addresses = gake_manager.gake_monitor.okx_crawler.get_token_trading_addresses(
-                        target_token_address, limit=100
-                    )
+                if target_alert:
+                    # 从警报的address_profiles中找出交易过该共同代币的地址
+                    target_token_url = f"https://gmgn.ai/sol/token/{target_alert.token.contract_address}"
+                    relevant_addresses = []
 
-                    if target_addresses:
-                        # 在目标代币交易者中，找出也交易过共同代币的地址
-                        intersection_addresses = []
-                        for addr in target_addresses:
-                            try:
-                                # 获取该地址的代币列表
-                                token_contracts = gake_manager.gake_monitor.address_crawler.get_address_token_contracts(addr, limit=100)
-                                if token_contracts and common_token_address in token_contracts:
-                                    intersection_addresses.append(addr)
-                            except:
-                                continue
+                    # 遍历可疑地址的profile，找出包含该共同代币的地址
+                    for addr, profile in target_alert.address_profiles.items():
+                        if hasattr(profile, 'token_contracts') and profile.token_contracts:
+                            if common_token_address in profile.token_contracts:
+                                relevant_addresses.append((addr, profile))
 
-                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 相关地址
+                    detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 相关地址
 
-🔄 地址归类结果:
-📊 目标代币交易者: {len(target_addresses)}个
-🎯 其中也交易过该代币: {len(intersection_addresses)}个
+🎯 目标代币: <a href="{target_token_url}">{target_alert.token.symbol}</a>
+📊 可疑地址总数: {len(target_alert.address_profiles)}个
+🔍 交易过该代币的地址: {len(relevant_addresses)}个
 """
 
-                        if intersection_addresses:
-                            detail_message += "\n📋 同时交易两个代币的地址:\n"
-                            # 显示前20个交集地址
-                            for i, addr in enumerate(intersection_addresses[:20]):
-                                detail_message += f"{i+1:2d}. <code>{addr}</code>\n"
+                    if relevant_addresses:
+                        detail_message += "\n📋 交易过该代币的可疑地址:\n"
+                        # 显示前20个相关地址
+                        for i, (addr, profile) in enumerate(relevant_addresses[:20]):
+                            detail_message += f"{i+1:2d}. <code>{addr}</code>"
+                            # 显示交易频率信息
+                            if hasattr(profile, 'transaction_count_7d'):
+                                detail_message += f" (7d:{profile.transaction_count_7d}次"
+                                if hasattr(profile, 'transaction_count_30d'):
+                                    detail_message += f", 30d:{profile.transaction_count_30d}次)"
+                                else:
+                                    detail_message += ")"
+                            detail_message += "\n"
 
-                            if len(intersection_addresses) > 20:
-                                detail_message += f"\n... 还有 {len(intersection_addresses) - 20} 个地址"
-                        else:
-                            detail_message += "\n❌ 目标代币交易者中没有找到交易过该代币的地址"
-
-                        detail_message += f"\n\n🔗 查看代币详情请点击上方链接"
+                        if len(relevant_addresses) > 20:
+                            detail_message += f"\n... 还有 {len(relevant_addresses) - 20} 个地址"
                     else:
-                        detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 相关地址
+                        detail_message += "\n❌ 可疑地址中没有找到交易过该代币的地址"
 
-❌ 无法获取交易地址数据进行交集分析
-
-🔗 查看代币详情请点击上方链接"""
+                    detail_message += f"\n\n🔗 查看代币详情请点击上方链接"
                 else:
                     # 兼容旧格式，显示该代币的交易地址
+                    print(f"🔍 正在获取代币 {common_token_address} 的交易地址...")
                     trading_addresses = gake_manager.gake_monitor.okx_crawler.get_token_trading_addresses(
                         common_token_address, limit=100
                     )
+                    print(f"🔍 获取到 {len(trading_addresses) if trading_addresses else 0} 个交易地址")
 
                     if trading_addresses:
                         detail_message = f"""🪙 <a href="{token_url}">{common_token.symbol}</a> 交易地址
@@ -667,7 +680,7 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
                     callback_data=f"back_to_gake_{call.message.message_id}"
                 ))
 
-                bot.answer_callback_query(call.id, f"📊 {token.symbol} 交易地址")
+                bot.answer_callback_query(call.id, f"📊 {common_token.symbol} 交易地址")
                 bot.send_message(
                     chat_id=call.message.chat.id,
                     text=detail_message,
@@ -690,14 +703,60 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
             # 提取代币地址前缀
             token_prefix = call.data.replace('low_freq_', '')
 
-            # 这里可以实现查看低频交易者的详细信息
-            # 目前先返回一个简单的消息
-            detail_message = f"""🔍 低频交易者详情
+            # 从缓存中获取警报数据
+            if token_prefix not in gake_manager.alert_cache:
+                detail_message = f"""🔍 低频交易者详情
 
-📊 正在分析代币的低频交易者...
+❌ 未找到对应的警报数据
 🔗 代币地址前缀: <code>{token_prefix}...</code>
 
-⚠️ 此功能正在开发中"""
+⚠️ 数据可能已过期，请尝试等待新的警报"""
+            else:
+                alert = gake_manager.alert_cache[token_prefix]
+                token_url = f"https://gmgn.ai/sol/token/{alert.token.contract_address}"
+
+                # 分析低频交易者
+                low_freq_7d_addresses = []
+                low_freq_30d_addresses = []
+
+                for addr, profile in alert.address_profiles.items():
+                    if profile.transaction_count_7d < 30:
+                        low_freq_7d_addresses.append((addr, profile.transaction_count_7d, profile.transaction_count_30d))
+                    if profile.transaction_count_30d < 50:
+                        low_freq_30d_addresses.append((addr, profile.transaction_count_7d, profile.transaction_count_30d))
+
+                # 按交易次数排序
+                low_freq_7d_addresses.sort(key=lambda x: x[1])
+                low_freq_30d_addresses.sort(key=lambda x: x[2])
+
+                detail_message = f"""🔍 <a href="{token_url}">{alert.token.symbol}</a> 低频交易者详情
+
+📊 <b>统计概览:</b>
+🕒 7天低频（&lt;30次）: {len(low_freq_7d_addresses)}/{len(alert.address_profiles)} 个地址
+🕒 30天低频（&lt;50次）: {len(low_freq_30d_addresses)}/{len(alert.address_profiles)} 个地址
+
+🔥 <b>7天低频交易者（前15个）:</b>"""
+
+                # 显示前15个7天低频交易者
+                for i, (addr, count_7d, count_30d) in enumerate(low_freq_7d_addresses[:15]):
+                    detail_message += f"\n{i+1:2d}. <code>{addr}</code>"
+                    detail_message += f"\n    📊 7d: {count_7d}次 | 30d: {count_30d}次"
+
+                if len(low_freq_7d_addresses) > 15:
+                    detail_message += f"\n\n... 还有 {len(low_freq_7d_addresses) - 15} 个7天低频地址"
+
+                detail_message += f"\n\n🌙 <b>30天低频交易者（前10个）:</b>"
+
+                # 显示前10个30天低频交易者（排除已显示的7天低频地址）
+                shown_addresses = {addr for addr, _, _ in low_freq_7d_addresses[:15]}
+                count = 0
+                for addr, count_7d, count_30d in low_freq_30d_addresses:
+                    if addr not in shown_addresses and count < 10:
+                        count += 1
+                        detail_message += f"\n{count:2d}. <code>{addr}</code>"
+                        detail_message += f"\n    📊 7d: {count_7d}次 | 30d: {count_30d}次"
+
+                detail_message += f"\n\n💡 <b>说明:</b> 低频地址通常为新手或异动账户"
 
             # 创建返回按钮
             from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -712,6 +771,7 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
                 chat_id=call.message.chat.id,
                 text=detail_message,
                 parse_mode='HTML',
+                disable_web_page_preview=True,
                 reply_markup=return_markup,
                 message_thread_id=call.message.message_thread_id
             )
@@ -764,9 +824,9 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
                 success, msg = gake_manager.start_gake_monitoring(message.from_user.id)
 
                 if success:
-                    startup_msg = f"""🚀 **Gake监控已启动** 🚀
+                    startup_msg = f"""🚀 <b>Gake监控已启动</b> 🚀
 
-📊 **监控配置:**
+📊 <b>监控配置:</b>
 • 市值范围: $10,000 - $30,000
 • 最小成交量: $1,000 (1小时)
 • 最小年龄: 720 分钟 (12小时)
@@ -774,20 +834,20 @@ def setup_rape_handlers(bot: telebot.TeleBot, chat_id: str, topic_id: str):
 • 监控间隔: 30秒
 • 分析交易地址: 100条记录 (~35个唯一地址)
 
-🔍 **分析内容:**
+🔍 <b>分析内容:</b>
 • 监控符合条件的代币价格变动
 • 分析交易地址的7天、30天交易频率
 • 检测可疑地址共同交易的代币
 • 识别cabal代币关联
 
-⚠️ **触发条件:**
+⚠️ <b>触发条件:</b>
 • 代币价格30秒内上涨超过3%
 • 至少2个可疑地址参与交易
-• 可疑地址定义: 7天或30天交易次数<50
+• 可疑地址定义: 7天或30天交易次数&lt;50
 
-📢 **符合条件的可疑活动将自动推送到群组**
+📢 <b>符合条件的可疑活动将自动推送到群组</b>
                     """
-                    bot.reply_to(message, startup_msg.strip())
+                    bot.reply_to(message, startup_msg.strip(), parse_mode='HTML')
                 else:
                     bot.reply_to(message, f"❌ {msg}")
 
